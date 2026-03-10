@@ -9,14 +9,19 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
-fun FloorPlanScreen(
-    viewModel: FloorPlanViewModel = viewModel()
-) {
+fun FloorPlanScreen(){
+    val viewModel: FloorPlanViewModel = viewModel()
+    val userRoom by viewModel.userRoom.collectAsState()
+    var userLocation by remember { mutableStateOf<Offset?>(null) }
+
+    userLocation = getRoomCoordinates(userRoom)
+
 
     val points by viewModel.points.collectAsState()
 
@@ -71,6 +76,21 @@ fun FloorPlanScreen(
                     )
                 )
             }
+            userLocation?.let {
+                drawCircle(
+                    color = Color.Green,
+                    radius = 30f,
+                    center = it
+                )
+            }
         }
+    }
+}
+fun getRoomCoordinates(room: String): Offset {
+    return when(room) {
+        "Room A" -> Offset(200f, 200f)
+        "Lab 1" -> Offset(400f, 300f)
+        "Hallway" -> Offset(600f, 500f)
+        else -> Offset(100f, 100f)
     }
 }

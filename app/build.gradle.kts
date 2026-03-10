@@ -41,6 +41,7 @@ android {
 }
 
 dependencies {
+    implementation("com.google.mlkit:image-labeling:17.0.7")
     // Core AndroidX
     implementation(libs.androidx.core.ktx)
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.10.0")
@@ -54,6 +55,7 @@ dependencies {
     implementation("androidx.camera:camera-camera2:1.3.1")
     implementation("androidx.camera:camera-lifecycle:1.3.1")
     implementation("androidx.camera:camera-view:1.3.1")
+    implementation("com.google.mlkit:text-recognition:16.0.0")
 
     // Jetpack Compose BOM
     implementation(platform(libs.androidx.compose.bom))
@@ -64,6 +66,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.compose.ui.geometry)
 
     // Debug tooling
     debugImplementation(libs.androidx.compose.ui.tooling)

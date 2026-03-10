@@ -18,6 +18,11 @@ data class FloorPoint(
 class FloorPlanViewModel(application: Application) :
     AndroidViewModel(application) {
 
+    var userRoom = MutableStateFlow("Unknown")
+    fun updateUserRoom(room: String) {
+        userRoom.value = room
+    }
+
     private val prefs =
         application.getSharedPreferences("floor_prefs", Context.MODE_PRIVATE)
 
@@ -60,8 +65,4 @@ class FloorPlanViewModel(application: Application) :
         savePoints()
     }
 
-    fun clearPoints() {
-        _points.value = emptyList()
-        savePoints()
-    }
 }
