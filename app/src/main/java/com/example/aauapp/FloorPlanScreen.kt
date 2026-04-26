@@ -1,319 +1,242 @@
 package com.example.aauapp
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Remove
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.MeetingRoom
+import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.aauapp.data.remote.SpaceDisplayDto
+import com.example.aauapp.ui.theme.*
 
 @Composable
-fun FloorPlanScreen() {
-    val viewModel: FloorPlanViewModel = viewModel()
+fun FloorPlanScreen(
+    floorId: String,
+    viewModel: FloorPlanViewModel = viewModel()
+) {
+    val uiState by viewModel.uiState.collectAsState()
 
-    val availableFloors by viewModel.availableFloors.collectAsState()
-    val selectedFloor by viewModel.selectedFloor.collectAsState()
-    val searchText by viewModel.searchText.collectAsState()
-    val rooms by viewModel.rooms.collectAsState()
-    val selectedRoom by viewModel.selectedRoom.collectAsState()
-    val userPosition by viewModel.userPosition.collectAsState()
-    val route by viewModel.route.collectAsState()
-    val statusText by viewModel.statusText.collectAsState()
-
-    val filteredRooms = if (searchText.isBlank()) {
-        rooms
-    } else {
-        rooms.filter { it.name.contains(searchText, ignoreCase = true) }
+    LaunchedEffect(floorId) {
+        viewModel.loadFloor(floorId)
     }
 
-    Box(
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.20f))
+            .background(Slate50)
+            .padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(top = 20.dp, bottom = 100.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = 170.dp)
-        ) {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = Color(0xFFF6F4EE)
-            ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    drawFloorBase()
+        item {
+            Text(
+                text = "Map",
+                style = MaterialTheme.typography.headlineLarge,
+                color = Slate900
+            )
 
-                    filteredRooms.forEach { room ->
-                        drawCircle(
-                            color = if (selectedRoom?.id == room.id) Color(0xFFD81B60) else Color(0xFFD32F2F),
-                            radius = 20f,
-                            center = room.position
-                        )
-                    }
+            Spacer(modifier = Modifier.height(6.dp))
 
-                    if (route.size > 1) {
-                        route.zipWithNext().forEach { (start, end) ->
-                            drawLine(
-                                color = Color(0xFF1565C0),
-                                start = start,
-                                end = end,
-                                strokeWidth = 10f
-                            )
-                        }
-                    }
+            Text(
+                text = uiState.floorName ?: "Current floor: $floorId",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Slate500
+            )
 
-                    drawCircle(
-                        color = Color(0xFF1E88E5),
-                        radius = 22f,
-                        center = userPosition
-                    )
-                }
-            }
+            Spacer(modifier = Modifier.height(18.dp))
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(16.dp)
-            ) {
-                SearchBarCard(
-                    value = searchText,
-                    onValueChange = viewModel::updateSearchText
-                )
-
+            if (uiState.isLoading) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(12.dp))
-
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(availableFloors) { floor ->
-                        FilterChip(
-                            selected = floor.id == selectedFloor,
-                            onClick = { viewModel.selectFloor(floor.id) },
-                            label = { Text(floor.label) },
-                            colors = FilterChipDefaults.filterChipColors()
-                        )
-                    }
-                }
             }
 
-            Column(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+            uiState.error?.let {
+                Text(
+                    text = "Backend error: $it",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            MapPreviewCard(uiState.spaces.size)
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Button(
+                onClick = { viewModel.computeRouteToSelected() },
+                enabled = uiState.selectedSpaceId != null,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp)
             ) {
-                FilledIconButton(onClick = { viewModel.zoomOut() }) {
-                    Icon(Icons.Outlined.Remove, contentDescription = "Zoom out")
-                }
-                FilledIconButton(onClick = { viewModel.zoomIn() }) {
-                    Icon(Icons.Outlined.Add, contentDescription = "Zoom in")
-                }
+                Icon(Icons.Default.Navigation, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Route to Selected Room")
             }
 
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .statusBarsPadding()
-                    .padding(start = 16.dp, top = 90.dp),
-                shape = RoundedCornerShape(16.dp),
-                tonalElevation = 2.dp,
-                shadowElevation = 2.dp
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.MyLocation, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = statusText,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
+            Spacer(modifier = Modifier.height(18.dp))
+
+            SectionTitle("Rooms from backend")
         }
 
-        BottomRouteCard(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(16.dp),
-            title = selectedRoom?.name ?: "Select a destination",
-            subtitle = if (selectedRoom != null) "Route preview ready" else "Choose a room to start navigation",
-            chips = filteredRooms.take(5),
-            onChipClick = viewModel::selectRoom,
-            onClear = viewModel::clearSelection
-        )
+        items(uiState.filteredSpaces) { space ->
+            SpaceCard(
+                space = space,
+                selected = uiState.selectedSpaceId == space.id,
+                onClick = { viewModel.selectSpace(space.id) }
+            )
+        }
+
+        if (uiState.routeSteps.isNotEmpty()) {
+            item {
+                Spacer(modifier = Modifier.height(18.dp))
+                SectionTitle("Route")
+            }
+
+            items(uiState.routeSteps) { step ->
+                RouteStepCard(
+                    title = step.display_name ?: step.space_id,
+                    subtitle = step.instruction ?: step.space_type.orEmpty()
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun SearchBarCard(
-    value: String,
-    onValueChange: (String) -> Unit
-) {
+private fun MapPreviewCard(spaceCount: Int) {
     Card(
-        shape = RoundedCornerShape(18.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        shape = RoundedCornerShape(30.dp),
+        colors = CardDefaults.cardColors(containerColor = AndroidCard),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            leadingIcon = {
-                Icon(Icons.Default.Search, contentDescription = null)
-            },
-            placeholder = {
-                Text("Search rooms or places")
-            },
-            singleLine = true,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(4.dp)
-        )
+        Column(modifier = Modifier.padding(18.dp)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(220.dp)
+                    .background(Blue50, RoundedCornerShape(24.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Map,
+                    contentDescription = null,
+                    tint = Blue600,
+                    modifier = Modifier.size(56.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Text(
+                text = "Backend Floor Display",
+                style = MaterialTheme.typography.headlineMedium,
+                color = Slate900
+            )
+
+            Text(
+                text = "$spaceCount spaces loaded",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Slate500
+            )
+        }
     }
 }
 
 @Composable
-private fun BottomRouteCard(
-    modifier: Modifier = Modifier,
-    title: String,
-    subtitle: String,
-    chips: List<RoomUi>,
-    onChipClick: (RoomUi) -> Unit,
-    onClear: () -> Unit
+private fun SpaceCard(
+    space: SpaceDisplayDto,
+    selected: Boolean,
+    onClick: () -> Unit
 ) {
     Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        onClick = onClick,
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) Blue50 else AndroidCard
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 10.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .wrapContentHeight()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+        Row(
+            modifier = Modifier.padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .background(
-                        MaterialTheme.colorScheme.surfaceVariant,
-                        RoundedCornerShape(100.dp)
-                    )
-                    .width(42.dp)
-                    .height(5.dp)
-            )
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically
+                    .size(46.dp)
+                    .clip(CircleShape)
+                    .background(if (selected) Blue600 else Blue50),
+                contentAlignment = Alignment.Center
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                FilledIconButton(onClick = {}) {
-                    Icon(Icons.Default.LocationOn, contentDescription = "Start")
-                }
+                Icon(
+                    imageVector = Icons.Default.MeetingRoom,
+                    contentDescription = null,
+                    tint = if (selected) AndroidCard else Blue600
+                )
             }
 
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(chips) { room ->
-                    FilterChip(
-                        selected = false,
-                        onClick = { onChipClick(room) },
-                        label = { Text(room.name) }
-                    )
-                }
-            }
+            Spacer(modifier = Modifier.width(14.dp))
 
-            TextButton(
-                onClick = onClear,
-                modifier = Modifier.align(Alignment.End)
-            ) {
-                Text("Clear")
+            Column {
+                Text(
+                    text = space.display_name ?: space.id,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Slate900
+                )
+
+                Text(
+                    text = space.space_type ?: "Space",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Slate500
+                )
             }
         }
     }
 }
 
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawFloorBase() {
-    drawRect(
-        color = Color(0xFFEDE7D9)
-    )
+@Composable
+private fun RouteStepCard(
+    title: String,
+    subtitle: String
+) {
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = AndroidCard),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Slate500)
+        }
+    }
+}
 
-    drawRect(
-        color = Color(0xFFD6D0C2),
-        topLeft = Offset(100f, 160f),
-        size = androidx.compose.ui.geometry.Size(760f, 90f)
-    )
-
-    drawRect(
-        color = Color(0xFFD6D0C2),
-        topLeft = Offset(100f, 450f),
-        size = androidx.compose.ui.geometry.Size(500f, 90f)
-    )
-
-    drawRect(
-        color = Color(0xFFD6D0C2),
-        topLeft = Offset(100f, 700f),
-        size = androidx.compose.ui.geometry.Size(650f, 90f)
-    )
-
-    drawRect(
-        color = Color(0xFFD6D0C2),
-        topLeft = Offset(680f, 250f),
-        size = androidx.compose.ui.geometry.Size(90f, 450f)
+@Composable
+private fun SectionTitle(title: String) {
+    Text(
+        text = title.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        color = Slate400,
+        modifier = Modifier.padding(bottom = 8.dp)
     )
 }

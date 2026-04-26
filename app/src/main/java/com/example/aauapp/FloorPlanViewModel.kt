@@ -1,108 +1,88 @@
 package com.example.aauapp
 
-import androidx.compose.ui.geometry.Offset
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.aauapp.data.remote.FloorDto
+import com.example.aauapp.data.remote.FloorPlanRepository
+import com.example.aauapp.data.remote.NavigationResultDto
+import com.example.aauapp.data.remote.RouteStepDto
+import com.example.aauapp.data.remote.SpaceDisplayDto
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
-data class FloorChip(
-    val id: Int,
-    val label: String
-)
-
-data class RoomUi(
-    val id: String,
-    val name: String,
-    val position: Offset
+data class FloorPlanUiState(
+    val isLoading: Boolean = false,
+    val floorId: String? = null,
+    val floorName: String? = null,
+    val spaces: List<SpaceDisplayDto> = emptyList(),
+    val filteredSpaces: List<SpaceDisplayDto> = emptyList(),
+    val selectedSpaceId: String? = null,
+    val routeSteps: List<RouteStepDto> = emptyList(),
+    val error: String? = null
 )
 
 class FloorPlanViewModel : ViewModel() {
 
-    private val _availableFloors = MutableStateFlow(
-        listOf(
-            FloorChip(0, "L1"),
-            FloorChip(1, "L2"),
-            FloorChip(2, "L3"),
-            FloorChip(3, "G")
-        )
-    )
-    val availableFloors: StateFlow<List<FloorChip>> = _availableFloors.asStateFlow()
+    private val repository = FloorPlanRepository()
 
-    private val _selectedFloor = MutableStateFlow(1)
-    val selectedFloor: StateFlow<Int> = _selectedFloor.asStateFlow()
+    private val _uiState = MutableStateFlow(FloorPlanUiState())
+    val uiState: StateFlow<FloorPlanUiState> = _uiState.asStateFlow()
 
-    private val _searchText = MutableStateFlow("")
-    val searchText: StateFlow<String> = _searchText.asStateFlow()
+    fun loadFloor(floorId: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
-    private val _rooms = MutableStateFlow(
-        listOf(
-            RoomUi("cafeteria", "Cafeteria", Offset(260f, 240f)),
-            RoomUi("room_a", "Room A", Offset(700f, 520f)),
-            RoomUi("elevator", "Elevator", Offset(220f, 520f)),
-            RoomUi("info", "Info Desk", Offset(470f, 700f)),
-            RoomUi("lab", "Lab", Offset(760f, 280f))
-        )
-    )
-    val rooms: StateFlow<List<RoomUi>> = _rooms.asStateFlow()
+            try {
+                val floor: FloorDto = repository.getFloor(floorId)
+                val spaces: List<SpaceDisplayDto> = repository.getFloorSpaces(floorId)
 
-    private val _selectedRoom = MutableStateFlow<RoomUi?>(null)
-    val selectedRoom: StateFlow<RoomUi?> = _selectedRoom.asStateFlow()
-
-    private val _userPosition = MutableStateFlow(Offset(180f, 760f))
-    val userPosition: StateFlow<Offset> = _userPosition.asStateFlow()
-
-    private val _route = MutableStateFlow<List<Offset>>(emptyList())
-    val route: StateFlow<List<Offset>> = _route.asStateFlow()
-
-    private val _statusText = MutableStateFlow("Indoor localization available")
-    val statusText: StateFlow<String> = _statusText.asStateFlow()
-
-    fun updateSearchText(value: String) {
-        _searchText.value = value
-    }
-
-    fun selectFloor(floorId: Int) {
-        _selectedFloor.value = floorId
-    }
-
-    fun selectRoom(room: RoomUi) {
-        _selectedRoom.value = room
-        buildRouteTo(room)
-    }
-
-    fun clearSelection() {
-        _selectedRoom.value = null
-        _route.value = emptyList()
-    }
-
-    fun zoomIn() {
-        // placeholder for future map zoom state
-    }
-
-    fun zoomOut() {
-        // placeholder for future map zoom state
-    }
-
-    fun updateDetectedLocation(locationName: String) {
-        val matchedRoom = _rooms.value.firstOrNull {
-            it.name.equals(locationName, ignoreCase = true)
-        }
-
-        if (matchedRoom != null) {
-            _userPosition.value = matchedRoom.position
-            _statusText.value = "Detected near ${matchedRoom.name}"
-        } else {
-            _statusText.value = "Detected: $locationName"
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    floorId = floor.id,
+                    floorName = floor.display_name ?: floor.id,
+                    spaces = spaces,
+                    filteredSpaces = spaces,
+                    error = null
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Failed to load floor"
+                )
+            }
         }
     }
 
-    private fun buildRouteTo(room: RoomUi) {
-        val start = _userPosition.value
-        val mid = Offset((start.x + room.position.x) / 2f, start.y)
-        val end = room.position
+    fun selectSpace(spaceId: String) {
+        _uiState.value = _uiState.value.copy(selectedSpaceId = spaceId)
+    }
 
-        _route.value = listOf(start, mid, end)
-        _statusText.value = "Route ready to ${room.name}"
+    fun computeRouteToSelected() {
+        val spaces = _uiState.value.spaces
+        val destination = _uiState.value.selectedSpaceId ?: return
+        val start = spaces.firstOrNull { it.id != destination }?.id ?: return
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+
+            try {
+                val result: NavigationResultDto = repository.navigate(
+                    fromSpaceId = start,
+                    toSpaceId = destination
+                )
+
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    routeSteps = result.steps
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Failed to compute route"
+                )
+            }
+        }
     }
 }
