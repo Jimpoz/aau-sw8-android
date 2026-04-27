@@ -40,7 +40,7 @@ fun MainScreen(
     Scaffold(
         containerColor = Slate50,
         bottomBar = {
-            if (!showRoomUpload) {
+            if (!showRoomUpload && selectedTab in 0..4) {
                 NavigationBar(
                     containerColor = AndroidCard,
                     tonalElevation = 0.dp
@@ -94,20 +94,45 @@ fun MainScreen(
                 .padding(paddingValues)
         ) {
             if (showRoomUpload) {
-                RoomPhotoUploadScreen(onBack = { showRoomUpload = false })
+                RoomPhotoUploadScreen(
+                    onBack = { showRoomUpload = false }
+                )
             } else {
                 when (selectedTab) {
-                    0 -> FloorPlanScreen(floorId = "floor-1")
+                    0 -> CampusSelectionScreenWithOpen(
+                        userSessionViewModel = userSessionViewModel,
+                        onOpenCampus = { campusId: String ->
+                            userSessionViewModel.updateCampus(campusId)
+                            selectedTab = 5
+                        }
+                    )
+
                     1 -> AssistantScreen()
+
                     2 -> CameraScreen(
                         onScanRoom = { showRoomUpload = true }
                     )
+
                     3 -> ExploreScreen()
+
                     4 -> ProfileScreen(
                         isDarkMode = isDarkMode,
                         onDarkModeChange = onDarkModeChange,
                         onOpenRoomPhotoUpload = { showRoomUpload = true },
                         viewModel = userSessionViewModel
+                    )
+
+                    5 -> CampusFloorPickerScreen(
+                        campusId = userSessionViewModel.uiState.value.selectedCampusId ?: "",
+                        onOpenFloor = { floorId ->
+                            userSessionViewModel.updateDefaultFloor(floorId)
+                            selectedTab = 6
+                        },
+                        userSessionViewModel = userSessionViewModel
+                    )
+
+                    6 -> FloorPlanScreen(
+                        floorId = userSessionViewModel.uiState.value.selectedFloorId ?: ""
                     )
                 }
             }

@@ -1,6 +1,8 @@
 package com.example.aauapp
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,9 +17,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.aauapp.data.remote.SpaceDisplayDto
@@ -31,7 +41,9 @@ fun FloorPlanScreen(
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(floorId) {
-        viewModel.loadFloor(floorId)
+        if (floorId.isNotBlank()) {
+            viewModel.loadFloor(floorId)
+        }
     }
 
     LazyColumn(
@@ -51,12 +63,12 @@ fun FloorPlanScreen(
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = uiState.floorName ?: "Current floor: $floorId",
+                text = uiState.floorName ?: "Floor: $floorId",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Slate500
             )
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             if (uiState.isLoading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -72,14 +84,21 @@ fun FloorPlanScreen(
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
-            MapPreviewCard(uiState.spaces.size)
+            IOSMapCard(
+                spaces = uiState.spaces,
+                selectedSpaceId = uiState.selectedSpaceId,
+                routeSteps = uiState.routeSteps,
+                onSpaceClick = { viewModel.selectSpace(it) }
+            )
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Button(
                 onClick = { viewModel.computeRouteToSelected() },
-                enabled = uiState.selectedSpaceId != null,
-                modifier = Modifier.fillMaxWidth(),
+                enabled = uiState.selectedSpaceId != null && uiState.spaces.size > 1,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
                 shape = RoundedCornerShape(18.dp)
             ) {
                 Icon(Icons.Default.Navigation, contentDescription = null)
@@ -117,27 +136,119 @@ fun FloorPlanScreen(
 }
 
 @Composable
-private fun MapPreviewCard(spaceCount: Int) {
+private fun IOSMapCard(
+    spaces: List<SpaceDisplayDto>,
+    selectedSpaceId: String?,
+    routeSteps: List<com.example.aauapp.data.remote.RouteStepDto>,
+    onSpaceClick: (String) -> Unit
+) {
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+
     Card(
         shape = RoundedCornerShape(30.dp),
         colors = CardDefaults.cardColors(containerColor = AndroidCard),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(220.dp)
-                    .background(Blue50, RoundedCornerShape(24.dp)),
+                    .height(300.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Blue50)
+                    .pointerInput(spaces, scale, offset) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            scale = (scale * zoom).coerceIn(0.7f, 4f)
+                            offset += pan
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.Map,
-                    contentDescription = null,
-                    tint = Blue600,
-                    modifier = Modifier.size(56.dp)
-                )
+                if (spaces.isEmpty()) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.Map,
+                            contentDescription = null,
+                            tint = Blue600,
+                            modifier = Modifier.size(56.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Text(
+                            text = "No map spaces found",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Slate700
+                        )
+
+                        Text(
+                            text = "Check floor id or imported backend data.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Slate500
+                        )
+                    }
+                } else {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val allPoints = spaces.flatMap { it.polygon.orEmpty() }
+
+                        val maxX = allPoints.maxOfOrNull { it.getOrNull(0) ?: 0.0 } ?: 1.0
+                        val maxY = allPoints.maxOfOrNull { it.getOrNull(1) ?: 0.0 } ?: 1.0
+
+                        val padding = 24f
+                        val baseScale = minOf(
+                            (size.width - padding * 2) / maxX.toFloat().coerceAtLeast(1f),
+                            (size.height - padding * 2) / maxY.toFloat().coerceAtLeast(1f)
+                        )
+
+                        fun mapPoint(point: List<Double>): Offset {
+                            val x = ((point.getOrNull(0) ?: 0.0).toFloat() * baseScale * scale) + padding + offset.x
+                            val y = ((point.getOrNull(1) ?: 0.0).toFloat() * baseScale * scale) + padding + offset.y
+                            return Offset(x, y)
+                        }
+
+                        spaces.forEach { space ->
+                            val polygon = space.polygon ?: return@forEach
+                            if (polygon.size < 3) return@forEach
+
+                            val path = Path()
+
+                            polygon.forEachIndexed { index, point ->
+                                val mapped = mapPoint(point)
+                                if (index == 0) {
+                                    path.moveTo(mapped.x, mapped.y)
+                                } else {
+                                    path.lineTo(mapped.x, mapped.y)
+                                }
+                            }
+
+                            path.close()
+
+                            val isSelected = selectedSpaceId == space.id
+                            val isRoute = routeSteps.any { it.space_id == space.id }
+
+                            drawPath(
+                                path = path,
+                                color = when {
+                                    isSelected -> Blue600.copy(alpha = 0.35f)
+                                    isRoute -> Blue600.copy(alpha = 0.22f)
+                                    else -> AndroidCard.copy(alpha = 0.95f)
+                                }
+                            )
+
+                            drawPath(
+                                path = path,
+                                color = when {
+                                    isSelected -> Blue600
+                                    isRoute -> Blue600.copy(alpha = 0.8f)
+                                    else -> Slate300
+                                },
+                                style = Stroke(width = if (isSelected) 4f else 2f)
+                            )
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -148,8 +259,10 @@ private fun MapPreviewCard(spaceCount: Int) {
                 color = Slate900
             )
 
+            Spacer(modifier = Modifier.height(4.dp))
+
             Text(
-                text = "$spaceCount spaces loaded",
+                text = "${spaces.size} spaces loaded",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Slate500
             )
@@ -194,12 +307,14 @@ private fun SpaceCard(
 
             Spacer(modifier = Modifier.width(14.dp))
 
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = space.display_name ?: space.id,
                     style = MaterialTheme.typography.titleMedium,
                     color = Slate900
                 )
+
+                Spacer(modifier = Modifier.height(3.dp))
 
                 Text(
                     text = space.space_type ?: "Space",
@@ -225,8 +340,17 @@ private fun RouteStepCard(
             .padding(bottom = 8.dp)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Slate500)
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = Slate900
+            )
+
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Slate500
+            )
         }
     }
 }
