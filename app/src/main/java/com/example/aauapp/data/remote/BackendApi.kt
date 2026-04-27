@@ -16,7 +16,8 @@ data class HealthResponseDto(
 
 data class CampusDto(
     val id: String,
-    val name: String
+    val name: String,
+    val description: String? = null
 )
 
 data class CampusMapLightDto(
@@ -134,13 +135,18 @@ interface BackendApi {
     @GET("health")
     suspend fun pingBackend(): HealthResponseDto
 
-    @GET("api/v1/mobile/campuses")
+    @GET("api/v1/campuses")
     suspend fun getCampuses(): List<CampusDto>
 
-    @GET("api/v1/mobile/campuses/{campusId}/map/light")
+    @GET("api/v1/campuses/{campusId}/export")
     suspend fun getCampusMapLight(
         @Path("campusId") campusId: String
     ): CampusMapLightDto
+
+    @GET("api/v1/buildings/{buildingId}/floors")
+    suspend fun getBuildingFloors(
+        @Path("buildingId") buildingId: String
+    ): List<FloorMapDto>
 
     @GET("api/v1/floors/{floorId}")
     suspend fun getFloor(
