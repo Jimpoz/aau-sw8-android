@@ -5,21 +5,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import com.example.aauapp.ui.theme.AAUAppTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 
 class MainActivity : ComponentActivity() {
 
-    private val appContainer by lazy {
-        (application as AAUAppApplication).appContainer
-    }
-
-    private val themeViewModel: ThemeViewModel by viewModels {
-        ThemeViewModelFactory(appContainer.themePreferencesStore)
-    }
-
-    val userSessionViewModel: UserSessionViewModel by viewModels()
+    private val userSessionViewModel: UserSessionViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,15 +24,9 @@ class MainActivity : ComponentActivity() {
 
             AAUAppTheme {
                 if (sessionState.isLoggedIn) {
-                    MainScreen(
-                        isDarkMode = themeViewModel.isDarkMode,
-                        onDarkModeChange = { themeViewModel.setDarkMode(it) },
-                        userSessionViewModel = userSessionViewModel
-                    )
+                    MainScreen(userSessionViewModel = userSessionViewModel)
                 } else {
-                    LoginScreen(
-                        viewModel = userSessionViewModel
-                    )
+                    LoginScreen(viewModel = userSessionViewModel)
                 }
             }
         }

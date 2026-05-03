@@ -1,46 +1,64 @@
 package com.example.aauapp
 
 import android.content.Context
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
 import com.google.gson.Gson
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 
-private val Context.userSessionDataStore by preferencesDataStore(name = "user_session")
+private data class PersistedUserSession(
+    val user: User? = null,
+    val selectedCampusId: String? = null,
+    val selectedBuildingId: String? = null,
+    val selectedFloorId: String? = null,
+)
 
-class UserSessionStore(private val context: Context) {
+class UserSessionStore(
+    context: Context,
+    private val gson: Gson = Gson(),
+) {
+    private val sharedPreferences = context.getSharedPreferences(
+        "user_session",
+        Context.MODE_PRIVATE,
+    )
 
-    private object Keys {
-        val PROFILE_JSON = stringPreferencesKey("profile_json")
+    fun loadSession(): UserSessionState {
+        val json = sharedPreferences.getString("session_json", null)
+        if (json.isNullOrBlank()) {
+            return UserSessionState()
+        }
+
+        val persistedSession = runCatching {
+            gson.fromJson(json, PersistedUserSession::class.java)
+        }.getOrNull() ?: return UserSessionState()
+
+        return UserSessionState(
+            user = persistedSession.user,
+            selectedCampusId = persistedSession.selectedCampusId,
+            selectedBuildingId = persistedSession.selectedBuildingId,
+            selectedFloorId = persistedSession.selectedFloorId,
+            error = null,
+        )
     }
 
-    private val gson = Gson()
+    fun saveSession(state: UserSessionState) {
+        val persistedSession = PersistedUserSession(
+            user = state.user,
+            selectedCampusId = state.selectedCampusId,
+            selectedBuildingId = state.selectedBuildingId,
+            selectedFloorId = state.selectedFloorId,
+        )
 
-    val profileFlow: Flow<UserProfileUi> =
-        context.userSessionDataStore.data.map { preferences ->
-            val json = preferences[Keys.PROFILE_JSON]
-            if (json.isNullOrBlank()) {
-                UserProfileUi()
-            } else {
-                runCatching {
-                    gson.fromJson(json, UserProfileUi::class.java)
-                }.getOrElse {
-                    UserProfileUi()
-                }
-            }
+        if (persistedSession.user == null) {
+            clearSession()
+            return
         }
 
-    suspend fun saveProfile(profile: UserProfileUi) {
-        context.userSessionDataStore.edit { preferences ->
-            preferences[Keys.PROFILE_JSON] = gson.toJson(profile)
-        }
+        sharedPreferences.edit()
+            .putString("session_json", gson.toJson(persistedSession))
+            .apply()
     }
 
-    suspend fun clearProfile() {
-        context.userSessionDataStore.edit { preferences ->
-            preferences.remove(Keys.PROFILE_JSON)
-        }
+    fun clearSession() {
+        sharedPreferences.edit()
+            .remove("session_json")
+            .apply()
     }
 }
