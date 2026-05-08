@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.aauapp.data.remote.BackendRepository
 import com.example.aauapp.data.remote.BuildingMapDto
 import com.example.aauapp.data.remote.CampusDto
+import com.example.aauapp.data.remote.FloorMapDto
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,8 +14,10 @@ import kotlinx.coroutines.launch
 data class ExploreUiState(
     val isLoading: Boolean = false,
     val campuses: List<CampusDto> = emptyList(),
+    val selectedCampus: CampusDto? = null,
     val buildings: List<BuildingMapDto> = emptyList(),
-    val selectedCampusId: String? = null,
+    val selectedBuilding: BuildingMapDto? = null,
+    val floors: List<FloorMapDto> = emptyList(),
     val error: String? = null
 )
 
@@ -22,7 +25,7 @@ class ExploreViewModel : ViewModel() {
 
     private val repository = BackendRepository()
 
-    private val _uiState = MutableStateFlow(ExploreUiState())
+    private val _uiState = MutableStateFlow(ExploreUiState(isLoading = true))
     val uiState: StateFlow<ExploreUiState> = _uiState.asStateFlow()
 
     init {
@@ -31,7 +34,10 @@ class ExploreViewModel : ViewModel() {
 
     fun loadCampuses() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _uiState.value = _uiState.value.copy(
+                isLoading = true,
+                error = null
+            )
 
             try {
                 val campuses = repository.getCampuses()
@@ -40,10 +46,12 @@ class ExploreViewModel : ViewModel() {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     campuses = campuses,
-                    selectedCampusId = firstCampus?.id
+                    selectedCampus = firstCampus
                 )
 
-                firstCampus?.id?.let { loadCampusMap(it) }
+                firstCampus?.let { campus ->
+                    selectCampus(campus)
+                }
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -53,20 +61,28 @@ class ExploreViewModel : ViewModel() {
         }
     }
 
-    fun loadCampusMap(campusId: String) {
+    fun selectCampus(campus: CampusDto) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isLoading = true,
-                selectedCampusId = campusId,
+                selectedCampus = campus,
+                selectedBuilding = null,
+                buildings = emptyList(),
+                floors = emptyList(),
                 error = null
             )
 
             try {
-                val map = repository.getCampusMapLight(campusId)
+                val campusMap = repository.getCampusMapLight(campus.id)
+                val buildings = campusMap.campus.buildings
+                val firstBuilding = buildings.firstOrNull()
 
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    buildings = map.campus.buildings
+                    selectedCampus = campus,
+                    buildings = buildings,
+                    selectedBuilding = firstBuilding,
+                    floors = firstBuilding?.floors.orEmpty()
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
@@ -75,5 +91,12 @@ class ExploreViewModel : ViewModel() {
                 )
             }
         }
+    }
+
+    fun selectBuilding(building: BuildingMapDto) {
+        _uiState.value = _uiState.value.copy(
+            selectedBuilding = building,
+            floors = building.floors
+        )
     }
 }

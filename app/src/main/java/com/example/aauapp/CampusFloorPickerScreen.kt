@@ -61,70 +61,66 @@ fun CampusFloorPickerScreen(
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        when {
-            uiState.isLoading -> {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        if (uiState.isLoading) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
+
+        uiState.error?.let {
+            Text(
+                text = it,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(bottom = 18.dp)
+        ) {
+            item {
+                SectionTitle("Buildings")
             }
 
-            uiState.error != null -> {
-                Text(
-                    text = "Error: ${uiState.error}",
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium
+            items(uiState.buildings) { building ->
+                BuildingCard(
+                    building = building,
+                    isSelected = uiState.selectedBuildingId == building.id,
+                    onClick = {
+                        viewModel.selectBuilding(building.id)
+                        userSessionViewModel.updateBuilding(building.id)
+                    }
                 )
             }
 
-            else -> {
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(bottom = 18.dp)
-                ) {
-                    item {
-                        SectionTitle("Buildings")
-                    }
+            item {
+                Spacer(modifier = Modifier.height(14.dp))
+                SectionTitle("Floors")
+            }
 
-                    items(uiState.buildings) { building ->
-                        BuildingCard(
-                            building = building,
-                            isSelected = uiState.selectedBuildingId == building.id,
-                            onClick = {
-                                viewModel.selectBuilding(building.id)
-                                userSessionViewModel.updateBuilding(building.id)
-                            }
-                        )
+            items(uiState.floors) { floor ->
+                FloorCard(
+                    floor = floor,
+                    isSelected = uiState.selectedFloorId == floor.id,
+                    onClick = {
+                        viewModel.selectFloor(floor.id)
                     }
+                )
+            }
+        }
 
-                    item {
-                        Spacer(modifier = Modifier.height(14.dp))
-                        SectionTitle("Floors")
-                    }
-
-                    items(uiState.floors) { floor ->
-                        FloorCard(
-                            floor = floor,
-                            isSelected = uiState.selectedFloorId == floor.id,
-                            onClick = {
-                                viewModel.selectFloor(floor.id)
-                            }
-                        )
-                    }
-                }
-
-                uiState.selectedFloorId?.let { selectedFloorId ->
-                    Button(
-                        onClick = {
-                            userSessionViewModel.updateDefaultFloor(selectedFloorId)
-                            onOpenFloor(selectedFloorId)
-                        },
-                        shape = RoundedCornerShape(18.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 18.dp)
-                            .height(54.dp)
-                    ) {
-                        Text("Open Floor")
-                    }
-                }
+        uiState.selectedFloorId?.let { selectedFloorId ->
+            Button(
+                onClick = {
+                    userSessionViewModel.updateDefaultFloor(selectedFloorId)
+                    onOpenFloor(selectedFloorId)
+                },
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 18.dp)
+                    .height(54.dp)
+            ) {
+                Text("Open Floor")
             }
         }
     }
@@ -138,7 +134,7 @@ private fun BuildingCard(
 ) {
     PickerCard(
         title = building.name,
-        subtitle = "${building.floors.size} floors • ${building.id}",
+        subtitle = "${building.floors.size} floors • ${building.short_name ?: building.id}",
         icon = Icons.Default.Business,
         isSelected = isSelected,
         onClick = onClick
@@ -169,7 +165,7 @@ private fun PickerCard(
     onClick: () -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) Blue50 else AndroidCard
         ),
@@ -180,13 +176,13 @@ private fun PickerCard(
             .clickable { onClick() }
     ) {
         Row(
-            modifier = Modifier.padding(18.dp),
+            modifier = Modifier.padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(46.dp)
-                    .clip(CircleShape)
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(10.dp))
                     .background(if (isSelected) Blue600 else Blue50),
                 contentAlignment = Alignment.Center
             ) {
@@ -197,20 +193,20 @@ private fun PickerCard(
                 )
             }
 
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    color = Slate900
+                    color = Slate800
                 )
 
-                Spacer(modifier = Modifier.height(3.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
                     text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = Slate500
                 )
             }
@@ -221,9 +217,9 @@ private fun PickerCard(
 @Composable
 private fun SectionTitle(title: String) {
     Text(
-        text = title.uppercase(),
-        style = MaterialTheme.typography.labelSmall,
-        color = Slate400,
+        text = title,
+        style = MaterialTheme.typography.labelMedium,
+        color = Slate600,
         modifier = Modifier.padding(bottom = 8.dp)
     )
 }

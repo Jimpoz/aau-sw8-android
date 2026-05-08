@@ -9,24 +9,11 @@ import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.example.aauapp.ui.theme.AndroidCard
-import com.example.aauapp.ui.theme.Blue600
-import com.example.aauapp.ui.theme.Slate50
-import com.example.aauapp.ui.theme.Slate500
+import com.example.aauapp.ui.theme.*
 
 @Composable
 fun MainScreen(
@@ -34,6 +21,8 @@ fun MainScreen(
     onDarkModeChange: (Boolean) -> Unit,
     userSessionViewModel: UserSessionViewModel
 ) {
+    val session by userSessionViewModel.uiState.collectAsState()
+
     var selectedTab by remember { mutableIntStateOf(0) }
     var showRoomUpload by remember { mutableStateOf(false) }
 
@@ -48,7 +37,7 @@ fun MainScreen(
                     NavigationBarItem(
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
-                        icon = { Icon(Icons.Default.Map, contentDescription = null) },
+                        icon = { Icon(Icons.Default.Map, null) },
                         label = { Text("Map") },
                         colors = navColors()
                     )
@@ -56,7 +45,7 @@ fun MainScreen(
                     NavigationBarItem(
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
-                        icon = { Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null) },
+                        icon = { Icon(Icons.Outlined.ChatBubbleOutline, null) },
                         label = { Text("Assistant") },
                         colors = navColors()
                     )
@@ -64,7 +53,7 @@ fun MainScreen(
                     NavigationBarItem(
                         selected = selectedTab == 2,
                         onClick = { selectedTab = 2 },
-                        icon = { Icon(Icons.Outlined.CameraAlt, contentDescription = null) },
+                        icon = { Icon(Icons.Outlined.CameraAlt, null) },
                         label = { Text("Camera") },
                         colors = navColors()
                     )
@@ -72,7 +61,7 @@ fun MainScreen(
                     NavigationBarItem(
                         selected = selectedTab == 3,
                         onClick = { selectedTab = 3 },
-                        icon = { Icon(Icons.Default.Explore, contentDescription = null) },
+                        icon = { Icon(Icons.Default.Explore, null) },
                         label = { Text("Explore") },
                         colors = navColors()
                     )
@@ -80,7 +69,7 @@ fun MainScreen(
                     NavigationBarItem(
                         selected = selectedTab == 4,
                         onClick = { selectedTab = 4 },
-                        icon = { Icon(Icons.Default.Person, contentDescription = null) },
+                        icon = { Icon(Icons.Default.Person, null) },
                         label = { Text("Profile") },
                         colors = navColors()
                     )
@@ -101,8 +90,7 @@ fun MainScreen(
                 when (selectedTab) {
                     0 -> CampusSelectionScreenWithOpen(
                         userSessionViewModel = userSessionViewModel,
-                        onOpenCampus = { campusId: String ->
-                            userSessionViewModel.updateCampus(campusId)
+                        onOpenCampus = {
                             selectedTab = 5
                         }
                     )
@@ -123,16 +111,15 @@ fun MainScreen(
                     )
 
                     5 -> CampusFloorPickerScreen(
-                        campusId = userSessionViewModel.uiState.value.selectedCampusId ?: "",
-                        onOpenFloor = { floorId ->
-                            userSessionViewModel.updateDefaultFloor(floorId)
+                        campusId = session.profile.campusId ?: "",
+                        userSessionViewModel = userSessionViewModel,
+                        onOpenFloor = {
                             selectedTab = 6
-                        },
-                        userSessionViewModel = userSessionViewModel
+                        }
                     )
 
                     6 -> FloorPlanScreen(
-                        floorId = userSessionViewModel.uiState.value.selectedFloorId ?: ""
+                        floorId = session.profile.defaultFloorId ?: ""
                     )
                 }
             }

@@ -9,15 +9,63 @@ import retrofit2.http.POST
 import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.Response
 
-data class HealthResponseDto(
-    val status: String
+data class HealthResponseDto(val status: String)
+
+data class AuthSignupRequest(
+    val email: String,
+    val password: String,
+    val full_name: String? = null,
+    val organization_id: String? = null
+)
+
+data class AuthLoginRequest(
+    val email: String,
+    val password: String,
+    val organization_id: String? = null
+)
+
+data class AuthMfaLoginRequest(
+    val challenge_token: String,
+    val code: String
+)
+
+data class AuthUserDto(
+    val id: String,
+    val email: String,
+    val full_name: String? = null
+)
+
+data class AuthResponseDto(
+    val mfa_required: Boolean = false,
+    val mfa_method: String? = null,
+    val challenge_token: String? = null,
+    val challenge_expires_at: String? = null,
+    val user: AuthUserDto? = null,
+    val organization_id: String? = null,
+    val role: String? = null,
+    val token: String? = null,
+    val token_expires_at: String? = null
+)
+
+data class AuthMeDto(
+    val id: String,
+    val email: String,
+    val full_name: String? = null,
+    val organization_id: String? = null,
+    val role: String? = null,
+    val mfa_enabled: Boolean = false,
+    val mfa_method: String? = null
 )
 
 data class CampusDto(
     val id: String,
     val name: String,
-    val description: String? = null
+    val description: String? = null,
+    val organization_id: String? = null,
+    val organization_name: String? = null,
+    val is_public: Boolean = false
 )
 
 data class CampusMapLightDto(
@@ -29,6 +77,7 @@ data class CampusMapCampusDto(
     val id: String,
     val name: String,
     val description: String? = null,
+    val organization_id: String? = null,
     val buildings: List<BuildingMapDto> = emptyList()
 )
 
@@ -36,13 +85,23 @@ data class BuildingMapDto(
     val id: String,
     val name: String,
     val short_name: String? = null,
+    val address: String? = null,
+    val origin_lat: Double? = null,
+    val origin_lng: Double? = null,
+    val origin_bearing: Double? = null,
+    val floor_count: Int? = null,
     val floors: List<FloorMapDto> = emptyList()
 )
 
 data class FloorMapDto(
     val id: String,
+    val building_id: String? = null,
     val floor_index: Int? = null,
-    val display_name: String? = null
+    val display_name: String? = null,
+    val floor_plan_url: String? = null,
+    val floor_plan_scale: Double? = null,
+    val floor_plan_origin_x: Double? = null,
+    val floor_plan_origin_y: Double? = null
 )
 
 data class FloorDto(
@@ -62,17 +121,22 @@ data class SpaceDisplayDto(
     val display_name: String? = null,
     val short_name: String? = null,
     val space_type: String? = null,
+    val floor_id: String? = null,
     val floor_index: Int? = null,
     val building_id: String? = null,
     val campus_id: String? = null,
+    val width_m: Double? = null,
+    val length_m: Double? = null,
+    val area_m2: Double? = null,
     val centroid_x: Double? = null,
     val centroid_y: Double? = null,
     val centroid_lat: Double? = null,
-    val centroid_lon: Double? = null,
+    val centroid_lng: Double? = null,
     val polygon: List<List<Double>>? = null,
     val polygon_global: List<List<Double>>? = null,
     val is_accessible: Boolean? = true,
     val is_navigable: Boolean? = true,
+    val is_outdoor: Boolean? = false,
     val capacity: Int? = null,
     val tags: List<String>? = emptyList()
 )
@@ -81,6 +145,7 @@ data class RouteStepDto(
     val space_id: String,
     val display_name: String? = null,
     val space_type: String? = null,
+    val floor_id: String? = null,
     val floor_index: Int? = null,
     val building_id: String? = null,
     val centroid_x: Double? = null,
@@ -118,16 +183,66 @@ data class RoomListItemDto(
 data class ViewSummaryDto(
     val direction: String? = null,
     val summary: String? = null,
+    val objects: List<String> = emptyList(),
     val object_counts: Map<String, Int> = emptyMap(),
+    val text: List<String> = emptyList(),
     val text_counts: Map<String, Int> = emptyMap()
 )
 
 data class RoomObjectSetupResponseDto(
     val room_name: String,
+    val room_objects: List<String> = emptyList(),
     val room_object_counts: Map<String, Int> = emptyMap(),
+    val room_text: List<String> = emptyList(),
     val room_text_counts: Map<String, Int> = emptyMap(),
+    val stored_image_count: Int = 0,
     val stored_views: List<String> = emptyList(),
     val room_summary: List<ViewSummaryDto> = emptyList()
+)
+
+data class MfaConfirmRequestDto(
+    val code: String
+)
+
+data class MfaDisableRequestDto(
+    val password: String
+)
+
+data class MfaEmailConfirmRequestDto(
+    val challenge_token: String,
+    val code: String
+)
+
+data class MfaSetupResponseDto(
+    val secret: String,
+    val provisioning_uri: String,
+    val recovery_codes: List<String> = emptyList()
+)
+
+data class MfaEmailSetupResponseDto(
+    val setup_challenge_token: String,
+    val challenge_expires_at: String,
+    val recovery_codes: List<String> = emptyList()
+)
+
+data class MfaStateResponseDto(
+    val mfa_enabled: Boolean,
+    val mfa_method: String? = null
+)
+
+data class PasswordChangeRequestDto(
+    val current_password: String,
+    val new_password: String
+)
+
+data class PasswordForgotRequestDto(
+    val email: String
+)
+
+data class PasswordResetRequestDto(
+    val email: String,
+    val code: String,
+    val new_password: String
 )
 
 interface BackendApi {
@@ -135,28 +250,38 @@ interface BackendApi {
     @GET("health")
     suspend fun pingBackend(): HealthResponseDto
 
-    @GET("api/v1/campuses")
+    @POST("api/v1/auth/signup")
+    suspend fun signup(@Body request: AuthSignupRequest): AuthResponseDto
+
+    @POST("api/v1/auth/login")
+    suspend fun login(@Body request: AuthLoginRequest): AuthResponseDto
+
+    @POST("api/v1/auth/login/mfa")
+    suspend fun loginMfa(@Body request: AuthMfaLoginRequest): AuthResponseDto
+
+    @POST("api/v1/auth/guest")
+    suspend fun guest(): AuthResponseDto
+
+    @GET("api/v1/auth/me")
+    suspend fun me(): AuthMeDto
+
+    @GET("api/v1/mobile/campuses")
     suspend fun getCampuses(): List<CampusDto>
 
+    @GET("api/v1/mobile/campuses/{campusId}/map/light")
+    suspend fun getCampusMapLight(@Path("campusId") campusId: String): CampusMapLightDto
+
     @GET("api/v1/campuses/{campusId}/export")
-    suspend fun getCampusMapLight(
-        @Path("campusId") campusId: String
-    ): CampusMapLightDto
+    suspend fun exportCampus(@Path("campusId") campusId: String): CampusMapLightDto
 
     @GET("api/v1/buildings/{buildingId}/floors")
-    suspend fun getBuildingFloors(
-        @Path("buildingId") buildingId: String
-    ): List<FloorMapDto>
+    suspend fun getBuildingFloors(@Path("buildingId") buildingId: String): List<FloorMapDto>
 
     @GET("api/v1/floors/{floorId}")
-    suspend fun getFloor(
-        @Path("floorId") floorId: String
-    ): FloorDto
+    suspend fun getFloor(@Path("floorId") floorId: String): FloorDto
 
     @GET("api/v1/floors/{floorId}/display")
-    suspend fun getFloorDisplay(
-        @Path("floorId") floorId: String
-    ): List<SpaceDisplayDto>
+    suspend fun getFloorDisplay(@Path("floorId") floorId: String): List<SpaceDisplayDto>
 
     @GET("api/v1/navigate")
     suspend fun navigate(
@@ -166,9 +291,7 @@ interface BackendApi {
     ): NavigationResultDto
 
     @POST("api/v1/assistant/chat")
-    suspend fun chatWithAssistant(
-        @Body request: AssistantChatRequest
-    ): AssistantChatResponse
+    suspend fun chatWithAssistant(@Body request: AssistantChatRequest): AssistantChatResponse
 
     @GET("api/v1/room-summary/rooms")
     suspend fun getRoomSummaryRooms(): RoomNamesResponseDto
@@ -182,4 +305,32 @@ interface BackendApi {
         @Part south_image: MultipartBody.Part,
         @Part west_image: MultipartBody.Part
     ): RoomObjectSetupResponseDto
+
+    @POST("api/v1/auth/mfa/email/setup")
+    suspend fun setupMfaEmail(): MfaEmailSetupResponseDto
+
+    @POST("api/v1/auth/mfa/email/confirm")
+    suspend fun confirmMfaEmail(
+        @Body request: MfaEmailConfirmRequestDto
+    ): MfaStateResponseDto
+
+    @POST("api/v1/auth/mfa/disable")
+    suspend fun disableMfa(
+        @Body request: MfaDisableRequestDto
+    ): MfaStateResponseDto
+
+    @POST("api/v1/auth/password/change")
+    suspend fun changePassword(
+        @Body request: PasswordChangeRequestDto
+    ): retrofit2.Response<Unit>
+
+    @POST("api/v1/auth/password/forgot")
+    suspend fun forgotPassword(
+        @Body request: PasswordForgotRequestDto
+    ): retrofit2.Response<Unit>
+
+    @POST("api/v1/auth/password/reset")
+    suspend fun resetPassword(
+        @Body request: PasswordResetRequestDto
+    ): retrofit2.Response<Unit>
 }

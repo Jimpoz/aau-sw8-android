@@ -30,19 +30,26 @@ class AssistantViewModel : ViewModel() {
             )
         )
     )
+
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
 
-    fun sendMessage(text: String) {
+    fun sendMessage(
+        text: String,
+        campusId: String = "campus-aau-cph"
+    ) {
         val cleanText = text.trim()
         if (cleanText.isEmpty()) return
 
-        _messages.value = _messages.value + ChatMessage(cleanText, MessageRole.USER)
+        _messages.value = _messages.value + ChatMessage(
+            text = cleanText,
+            role = MessageRole.USER
+        )
 
         viewModelScope.launch {
             try {
                 val answer = repository.sendMessage(
                     text = cleanText,
-                    campusId = "campus-aau-cph"
+                    campusId = campusId
                 )
 
                 _messages.value = _messages.value + ChatMessage(
