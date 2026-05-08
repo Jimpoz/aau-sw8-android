@@ -36,6 +36,7 @@ class MainActivity : ComponentActivity() {
             val sessionState by userSessionViewModel.uiState.collectAsState()
 
             AAUAppTheme(darkTheme = themeViewModel.isDarkMode) {
+
                 when {
                     sessionState.isLoading -> {
                         Box(
@@ -55,7 +56,9 @@ class MainActivity : ComponentActivity() {
                     }
 
                     else -> {
-                        LoginScreen(viewModel = userSessionViewModel)
+                        LoginScreen(
+                            viewModel = userSessionViewModel
+                        )
                     }
                 }
             }
