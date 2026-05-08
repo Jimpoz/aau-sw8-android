@@ -24,9 +24,16 @@ android {
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
         buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")
         buildConfigField("String", "BACKEND_API_KEY", "\"$backendApiKey\"")
+        val middlewareBaseUrl = providers.gradleProperty("middlewareBaseUrl")
+            .orElse(localProperties.getProperty("MIDDLEWARE_BASE_URL", ""))
+            .get()
+        val middlewareApiSecret = providers.gradleProperty("middlewareApiSecret")
+            .orElse(localProperties.getProperty("MIDDLEWARE_API_SECRET", ""))
+            .get()
+        buildConfigField("String", "MIDDLEWARE_BASE_URL", "\"$middlewareBaseUrl\"")
+        buildConfigField("String", "MIDDLEWARE_API_SECRET", "\"$middlewareApiSecret\"")
     }
 
     buildTypes {
@@ -61,6 +68,14 @@ android {
 dependencies {
     implementation("com.google.mlkit:image-labeling:17.0.7")
     implementation("com.google.mlkit:text-recognition:16.0.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Core AndroidX
+    implementation(libs.androidx.core.ktx)
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation("androidx.activity:activity-compose:1.9.0")
     implementation("com.google.code.gson:gson:2.10.1")
 
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
@@ -96,6 +111,8 @@ dependencies {
 
     implementation(platform("com.google.firebase:firebase-bom:34.4.0"))
     implementation("com.google.firebase:firebase-auth")
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("com.google.android.gms:play-services-location:21.3.0")
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
@@ -105,7 +122,4 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-
-    implementation("androidx.datastore:datastore-preferences:1.1.1")
-    implementation("com.google.android.gms:play-services-location:21.3.0")
 }

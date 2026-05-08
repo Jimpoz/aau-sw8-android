@@ -1,121 +1,101 @@
 package com.example.aauapp
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import com.example.aauapp.ui.theme.*
 
 @Composable
 fun LoginScreen(
-    viewModel: UserSessionViewModel
+    viewModel: UserSessionViewModel,
 ) {
     val uiState by viewModel.uiState.collectAsState()
-
-    var isRegisterMode by remember { mutableStateOf(false) }
-    var name by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    var isRegisterMode by rememberSaveable { mutableStateOf(false) }
+    var name by rememberSaveable { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Slate50),
-        contentAlignment = Alignment.Center
+            .padding(16.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Card(
-            shape = RoundedCornerShape(32.dp),
-            colors = CardDefaults.cardColors(containerColor = AndroidCard),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(22.dp)
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
         ) {
             Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(74.dp)
-                        .clip(CircleShape)
-                        .background(Blue50),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = null,
-                        tint = Blue600,
-                        modifier = Modifier.size(34.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(22.dp))
-
                 Text(
-                    text = if (isRegisterMode) "Create Account" else "Welcome Back",
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = Slate900
+                    text = if (isRegisterMode) "Create account" else "Log in",
+                    style = MaterialTheme.typography.headlineSmall,
                 )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
                 Text(
                     text = if (isRegisterMode) {
-                        "Sign up to start navigating campus."
+                        "Create an account to enter the app."
                     } else {
-                        "Log in to continue to your AAU app."
+                        "Log in to open the main screen."
                     },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Slate500
                 )
-
-                Spacer(modifier = Modifier.height(24.dp))
 
                 if (isRegisterMode) {
-                    LoginField(
+                    OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
-                        label = "Name"
+                        label = { Text("Name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
                     )
-
-                    Spacer(modifier = Modifier.height(12.dp))
                 }
 
-                LoginField(
+                OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
-                    label = "Email"
+                    label = { Text("Email") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                LoginField(
+                OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = "Password",
-                    isPassword = true
+                    label = { Text("Password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
                 )
 
                 uiState.error?.let { error ->
-                    Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         text = error,
                         color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodyMedium,
                     )
                 }
-
-                Spacer(modifier = Modifier.height(20.dp))
 
                 Button(
                     onClick = {
@@ -128,65 +108,23 @@ fun LoginScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Blue600,
-                        contentColor = AndroidCard
-                    )
                 ) {
-                    Text(
-                        text = if (isRegisterMode) "Create Account" else "Log In",
-                        style = MaterialTheme.typography.titleMedium
-                    )
+                    Text(if (isRegisterMode) "Create account" else "Log in")
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
                 TextButton(
-                    onClick = { isRegisterMode = !isRegisterMode }
+                    onClick = { isRegisterMode = !isRegisterMode },
+                    modifier = Modifier.align(Alignment.End),
                 ) {
                     Text(
-                        text = if (isRegisterMode) {
-                            "Already have an account? Log in"
+                        if (isRegisterMode) {
+                            "Already have an account?"
                         } else {
-                            "New here? Create account"
-                        },
-                        color = Blue600
+                            "Need to create an account?"
+                        }
                     )
                 }
             }
         }
     }
-}
-
-@Composable
-private fun LoginField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    isPassword: Boolean = false
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label) },
-        singleLine = true,
-        visualTransformation = if (isPassword) {
-            PasswordVisualTransformation()
-        } else {
-            androidx.compose.ui.text.input.VisualTransformation.None
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(58.dp),
-        shape = RoundedCornerShape(18.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Blue600,
-            unfocusedBorderColor = Slate200,
-            focusedLabelColor = Blue600,
-            unfocusedLabelColor = Slate500,
-            focusedContainerColor = Slate50,
-            unfocusedContainerColor = Slate50
-        )
-    )
 }

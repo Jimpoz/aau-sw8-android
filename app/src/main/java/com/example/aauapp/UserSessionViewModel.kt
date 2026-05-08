@@ -1,6 +1,7 @@
 package com.example.aauapp
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -10,7 +11,7 @@ data class UserSessionState(
     val selectedCampusId: String? = null,
     val selectedBuildingId: String? = null,
     val selectedFloorId: String? = null,
-    val error: String? = null
+    val error: String? = null,
 ) {
     val isLoggedIn: Boolean
         get() = user != null
@@ -23,18 +24,22 @@ data class User(
     val organizationId: String? = null,
     val preferredCampusId: String? = null,
     val preferredBuildingId: String? = null,
-    val preferredFloorId: String? = null
+    val preferredFloorId: String? = null,
 )
 
-class UserSessionViewModel : ViewModel() {
+class UserSessionViewModel(
+    application: Application,
+) : AndroidViewModel(application) {
 
-    private val _uiState = MutableStateFlow(UserSessionState())
+    private val sessionStore = UserSessionStore(application.applicationContext)
+
+    private val _uiState = MutableStateFlow(sessionStore.loadSession())
     val uiState: StateFlow<UserSessionState> = _uiState.asStateFlow()
 
     fun login(email: String, password: String) {
         if (email.isBlank() || password.isBlank()) {
             _uiState.value = _uiState.value.copy(
-                error = "Email and password are required"
+                error = "Email and password are required",
             )
             return
         }
@@ -43,73 +48,83 @@ class UserSessionViewModel : ViewModel() {
             if (it.isLowerCase()) it.titlecase() else it.toString()
         }
 
-        _uiState.value = UserSessionState(
-            user = User(
-                id = "local-user-1",
-                name = name,
-                email = email,
-                organizationId = "org-aau"
+        updateSession(
+            UserSessionState(
+                user = User(
+                    id = "local-user-1",
+                    name = name,
+                    email = email,
+                    organizationId = "org-aau",
+                ),
+                error = null,
             ),
-            error = null
         )
     }
 
     fun register(name: String, email: String, password: String) {
         if (name.isBlank() || email.isBlank() || password.isBlank()) {
             _uiState.value = _uiState.value.copy(
-                error = "All fields are required"
+                error = "All fields are required",
             )
             return
         }
 
-        _uiState.value = UserSessionState(
-            user = User(
-                id = "local-user-1",
-                name = name,
-                email = email,
-                organizationId = "org-aau"
+        updateSession(
+            UserSessionState(
+                user = User(
+                    id = "local-user-1",
+                    name = name,
+                    email = email,
+                    organizationId = "org-aau",
+                ),
+                error = null,
             ),
-            error = null
         )
     }
 
     fun updateCampus(campusId: String) {
         val currentUser = _uiState.value.user
 
-        _uiState.value = _uiState.value.copy(
-            selectedCampusId = campusId,
-            user = currentUser?.copy(
-                preferredCampusId = campusId
+        updateSession(
+            _uiState.value.copy(
+                selectedCampusId = campusId,
+                user = currentUser?.copy(preferredCampusId = campusId),
+                error = null,
             ),
-            error = null
         )
     }
 
     fun updateBuilding(buildingId: String) {
         val currentUser = _uiState.value.user
 
-        _uiState.value = _uiState.value.copy(
-            selectedBuildingId = buildingId,
-            user = currentUser?.copy(
-                preferredBuildingId = buildingId
+        updateSession(
+            _uiState.value.copy(
+                selectedBuildingId = buildingId,
+                user = currentUser?.copy(preferredBuildingId = buildingId),
+                error = null,
             ),
-            error = null
         )
     }
 
     fun updateDefaultFloor(floorId: String) {
         val currentUser = _uiState.value.user
 
-        _uiState.value = _uiState.value.copy(
-            selectedFloorId = floorId,
-            user = currentUser?.copy(
-                preferredFloorId = floorId
+        updateSession(
+            _uiState.value.copy(
+                selectedFloorId = floorId,
+                user = currentUser?.copy(preferredFloorId = floorId),
+                error = null,
             ),
-            error = null
         )
     }
 
     fun logout() {
+        sessionStore.clearSession()
         _uiState.value = UserSessionState()
+    }
+
+    private fun updateSession(newState: UserSessionState) {
+        _uiState.value = newState
+        sessionStore.saveSession(newState)
     }
 }
