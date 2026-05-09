@@ -1,41 +1,35 @@
 package com.example.aauapp
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import com.example.aauapp.data.remote.AuthRepository
+import com.example.aauapp.data.remote.AuthResponseDto
+import com.example.aauapp.data.remote.AuthTokenStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-data class UserSessionState(
-    val user: User? = null,
-    val selectedCampusId: String? = null,
-    val selectedBuildingId: String? = null,
-    val selectedFloorId: String? = null,
+data class UserSessionUiState(
+    val isLoading: Boolean = true,
+    val profile: UserProfileUi = UserProfileUi(),
     val error: String? = null,
+    val mfaChallengeToken: String? = null,
+    val message: String? = null
 ) {
     val isLoggedIn: Boolean
         get() = profile.id.isNotBlank()
 }
 
-data class User(
-    val id: String,
-    val name: String,
-    val email: String,
-    val organizationId: String? = null,
-    val preferredCampusId: String? = null,
-    val preferredBuildingId: String? = null,
-    val preferredFloorId: String? = null,
-)
-
 class UserSessionViewModel(
-    application: Application,
-) : AndroidViewModel(application) {
+    private val store: UserSessionStore
+) : ViewModel() {
 
-    private val sessionStore = UserSessionStore(application.applicationContext)
+    private val repository = AuthRepository()
 
-    private val _uiState = MutableStateFlow(sessionStore.loadSession())
-    val uiState: StateFlow<UserSessionState> = _uiState.asStateFlow()
+    private val _uiState = MutableStateFlow(UserSessionUiState())
+    val uiState: StateFlow<UserSessionUiState> = _uiState.asStateFlow()
 
     init {
         viewModelScope.launch {
@@ -124,7 +118,7 @@ class UserSessionViewModel(
     ) {
         if (email.isBlank() || password.length < 8) {
             _uiState.value = _uiState.value.copy(
-                error = "Email and password are required",
+                error = "Email and 8-character password are required"
             )
             return
         }
@@ -133,14 +127,14 @@ class UserSessionViewModel(
             _uiState.value = _uiState.value.copy(isLoading = true, error = null, message = null)
 
             try {
-                saveAuthResponse(
-                    repository.signup(
-                        email = email.trim(),
-                        password = password,
-                        fullName = fullName?.ifBlank { null },
-                        organizationId = organizationId?.ifBlank { null }
-                    )
+                val response = repository.signup(
+                    email = email.trim(),
+                    password = password,
+                    fullName = fullName?.ifBlank { null },
+                    organizationId = organizationId?.ifBlank { null }
                 )
+
+                saveAuthResponse(response)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -150,17 +144,19 @@ class UserSessionViewModel(
         }
     }
 
-        updateSession(
-            UserSessionState(
-                user = User(
-                    id = "local-user-1",
-                    name = name,
-                    email = email,
-                    organizationId = "org-aau",
-                ),
-                error = null,
-            ),
-        )
+    fun guestLogin() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null, message = null)
+
+            try {
+                saveAuthResponse(repository.guest())
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Guest login failed"
+                )
+            }
+        }
     }
 
     private suspend fun saveAuthResponse(response: AuthResponseDto) {
@@ -168,21 +164,24 @@ class UserSessionViewModel(
 
         if (token.isNullOrBlank()) {
             _uiState.value = _uiState.value.copy(
-                error = "All fields are required",
+                isLoading = false,
+                error = "Auth failed: no token returned"
             )
             return
         }
 
-        updateSession(
-            UserSessionState(
-                user = User(
-                    id = "local-user-1",
-                    name = name,
-                    email = email,
-                    organizationId = "org-aau",
-                ),
-                error = null,
-            ),
+        AuthTokenStore.token = token
+
+        val user = response.user
+
+        val profile = _uiState.value.profile.copy(
+            id = user?.id.orEmpty(),
+            email = user?.email.orEmpty(),
+            displayName = user?.full_name ?: user?.email?.substringBefore("@").orEmpty(),
+            membershipTier = response.role ?: "Member",
+            organizationId = response.organization_id,
+            role = response.role,
+            authToken = token
         )
 
         store.saveProfile(profile)
@@ -243,13 +242,7 @@ class UserSessionViewModel(
                     mfaMethod = result.mfa_method
                 )
 
-                store.saveProfile(profile)
-
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    profile = profile,
-                    message = "Two-factor authentication enabled"
-                )
+                persist(profile, message = "Two-factor authentication enabled")
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -276,13 +269,7 @@ class UserSessionViewModel(
                     mfaMethod = result.mfa_method
                 )
 
-                store.saveProfile(profile)
-
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    profile = profile,
-                    message = "Two-factor authentication disabled"
-                )
+                persist(profile, message = "Two-factor authentication disabled")
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -386,48 +373,78 @@ class UserSessionViewModel(
     }
 
     fun updateCampus(campusId: String) {
-        val currentUser = _uiState.value.user
-
-        updateSession(
-            _uiState.value.copy(
-                selectedCampusId = campusId,
-                user = currentUser?.copy(preferredCampusId = campusId),
-                error = null,
-            ),
+        persist(
+            _uiState.value.profile.copy(
+                campusId = campusId,
+                buildingId = null,
+                defaultFloorId = null
+            )
         )
     }
 
     fun updateBuilding(buildingId: String) {
-        val currentUser = _uiState.value.user
-
-        updateSession(
-            _uiState.value.copy(
-                selectedBuildingId = buildingId,
-                user = currentUser?.copy(preferredBuildingId = buildingId),
-                error = null,
-            ),
+        persist(
+            _uiState.value.profile.copy(
+                buildingId = buildingId,
+                defaultFloorId = null
+            )
         )
     }
 
     fun updateDefaultFloor(floorId: String) {
-        val currentUser = _uiState.value.user
+        persist(
+            _uiState.value.profile.copy(
+                defaultFloorId = floorId
+            )
+        )
+    }
 
-        updateSession(
-            _uiState.value.copy(
-                selectedFloorId = floorId,
-                user = currentUser?.copy(preferredFloorId = floorId),
-                error = null,
-            ),
+    fun updateNavigationPreferences(
+        avoidStairs: Boolean,
+        voiceEnabled: Boolean,
+        elevatorsOnly: Boolean
+    ) {
+        persist(
+            _uiState.value.profile.copy(
+                avoidStairs = avoidStairs,
+                voiceEnabled = voiceEnabled,
+                elevatorsOnly = elevatorsOnly
+            )
         )
     }
 
     fun logout() {
-        sessionStore.clearSession()
-        _uiState.value = UserSessionState()
+        AuthTokenStore.token = null
+
+        viewModelScope.launch {
+            store.clearProfile()
+        }
+
+        _uiState.value = UserSessionUiState(isLoading = false)
     }
 
-    private fun updateSession(newState: UserSessionState) {
-        _uiState.value = newState
-        sessionStore.saveSession(newState)
+    private fun persist(
+        profile: UserProfileUi,
+        message: String? = null
+    ) {
+        _uiState.value = _uiState.value.copy(
+            isLoading = false,
+            profile = profile,
+            error = null,
+            message = message
+        )
+
+        viewModelScope.launch {
+            store.saveProfile(profile)
+        }
+    }
+}
+
+class UserSessionViewModelFactory(
+    private val store: UserSessionStore
+) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return UserSessionViewModel(store) as T
     }
 }

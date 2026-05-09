@@ -20,7 +20,7 @@ fun LogoutScreen(
     viewModel: UserSessionViewModel,
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val user = uiState.user
+    val user = uiState.profile
 
     Column(
         modifier = Modifier
@@ -32,6 +32,7 @@ fun LogoutScreen(
             text = "Logout",
             style = MaterialTheme.typography.headlineSmall,
         )
+
         Text(
             text = "This device is currently holding the signed-in user locally.",
             style = MaterialTheme.typography.bodyMedium,
@@ -43,11 +44,12 @@ fun LogoutScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = user?.name ?: "No user loaded",
+                    text = user.displayName.ifBlank { "No user loaded" },
                     style = MaterialTheme.typography.titleLarge,
                 )
+
                 Text(
-                    text = user?.email ?: "No email available",
+                    text = user.email.ifBlank { "No email available" },
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
