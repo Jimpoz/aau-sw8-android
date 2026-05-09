@@ -105,14 +105,12 @@ private data class UploadImage(
 class RoomMapApiService(
     private val client: OkHttpClient = OkHttpClient(),
     private val gson: Gson = Gson(),
-    baseUrl: String = "",
-    private val apiSecret: String = "",
+    baseUrl: String = BuildConfig.MIDDLEWARE_BASE_URL,
+    private val apiSecret: String = BuildConfig.MIDDLEWARE_API_SECRET,
 ) {
     private val normalizedBaseUrl = baseUrl.trimEnd('/')
 
     fun fetchCampuses(): List<CampusListItemResponse> {
-        ensureBaseUrlConfigured()
-
         val request = authorizedRequest("$normalizedBaseUrl/api/v1/mobile/campuses")
             .get()
             .build()
@@ -121,8 +119,6 @@ class RoomMapApiService(
     }
 
     fun fetchCampusLightMap(campusId: String): MobileCampusMapResponse {
-        ensureBaseUrlConfigured()
-
         val request = authorizedRequest("$normalizedBaseUrl/api/v1/mobile/campuses/$campusId/map/light")
             .get()
             .build()
@@ -135,8 +131,6 @@ class RoomMapApiService(
         roomName: String,
         imagesByDirection: Map<UploadDirection, Uri>,
     ): RoomObjectDetectionSetupResponse {
-        ensureBaseUrlConfigured()
-
         val uploadImages = UploadDirection.entries.associateWith { direction ->
             val uri = imagesByDirection[direction]
                 ?: throw IOException("Missing ${direction.label.lowercase()} image.")
@@ -163,12 +157,6 @@ class RoomMapApiService(
             .build()
 
         return execute(request, RoomObjectDetectionSetupResponse::class.java)
-    }
-
-    private fun ensureBaseUrlConfigured() {
-        if (normalizedBaseUrl.isBlank()) {
-            throw IOException("Middleware base URL is not configured.")
-        }
     }
 
     private fun <T> execute(request: Request, responseClass: Class<T>): T {
@@ -207,10 +195,7 @@ class RoomMapApiService(
             return try {
                 gson.fromJson(
                     payload,
-                    com.google.gson.reflect.TypeToken.getParameterized(
-                        List::class.java,
-                        elementClass,
-                    ).type,
+                    com.google.gson.reflect.TypeToken.getParameterized(List::class.java, elementClass).type,
                 ) ?: emptyList()
             } catch (_: JsonSyntaxException) {
                 throw IOException("Middleware returned invalid JSON.")
@@ -233,11 +218,9 @@ class RoomMapApiService(
 
     private fun authorizedRequest(url: String): Request.Builder {
         val builder = Request.Builder().url(url)
-
         if (apiSecret.isNotBlank()) {
             builder.header("X-API-Key", apiSecret)
         }
-
         return builder
     }
 }
@@ -245,7 +228,6 @@ class RoomMapApiService(
 private fun ContentResolver.toUploadImage(uri: Uri, direction: UploadDirection): UploadImage {
     val bytes = openInputStream(uri)?.use { it.readBytes() }
         ?: throw IOException("Could not open the ${direction.label.lowercase()} image.")
-
     if (bytes.isEmpty()) {
         throw IOException("The ${direction.label.lowercase()} image is empty.")
     }
@@ -261,15 +243,8 @@ private fun ContentResolver.toUploadImage(uri: Uri, direction: UploadDirection):
 }
 
 private fun ContentResolver.queryDisplayName(uri: Uri): String? {
-    return query(
-        uri,
-        arrayOf(OpenableColumns.DISPLAY_NAME),
-        null,
-        null,
-        null,
-    )?.use { cursor ->
+    return query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
         val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-
         if (nameIndex >= 0 && cursor.moveToFirst()) {
             cursor.getString(nameIndex)
         } else {

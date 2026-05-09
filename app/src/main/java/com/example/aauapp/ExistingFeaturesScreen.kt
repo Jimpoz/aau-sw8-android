@@ -1,4 +1,5 @@
 package com.example.aauapp
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -25,7 +26,9 @@ fun NavigationToolsScreen(
 ) {
     var selectedTab by remember { mutableStateOf(0) }
     val sessionState by userSessionViewModel.uiState.collectAsState()
-    val selectedFloorId = sessionState.profile.defaultFloorId ?: "floor-1"
+    val selectedFloorId = sessionState.selectedFloorId
+        ?: sessionState.user?.preferredFloorId
+        ?: "floor-1"
 
     Scaffold(
         bottomBar = {

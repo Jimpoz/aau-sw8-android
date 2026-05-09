@@ -1,195 +1,131 @@
 package com.example.aauapp
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import com.example.aauapp.ui.theme.*
 
 @Composable
 fun LoginScreen(
-    viewModel: UserSessionViewModel
+    viewModel: UserSessionViewModel,
 ) {
     val uiState by viewModel.uiState.collectAsState()
-
-    var isSignupMode by remember { mutableStateOf(false) }
-    var isMemberSignup by remember { mutableStateOf(true) }
-
-    var fullName by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var organizationId by remember { mutableStateOf("aau") }
-
-    val canSubmit =
-        email.isNotBlank() &&
-                password.isNotBlank() &&
-                (!isSignupMode || password.length >= 8) &&
-                (!isSignupMode || !isMemberSignup || organizationId.isNotBlank())
+    var isRegisterMode by rememberSaveable { mutableStateOf(false) }
+    var name by rememberSaveable { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(Blue500, Blue700)
-                )
-            )
+            .padding(16.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp)
-                .padding(top = 80.dp, bottom = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
         ) {
-            Header(isSignupMode = isSignupMode)
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            ModeToggle(
-                isSignupMode = isSignupMode,
-                onChange = { isSignupMode = it }
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Card(
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = AndroidCard.copy(alpha = 0.18f)
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                modifier = Modifier.fillMaxWidth()
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    if (isSignupMode) {
-                        SignupKindToggle(
-                            isMemberSignup = isMemberSignup,
-                            onChange = { isMemberSignup = it }
-                        )
+                Text(
+                    text = if (isRegisterMode) "Create account" else "Log in",
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Text(
+                    text = if (isRegisterMode) {
+                        "Create an account to enter the app."
+                    } else {
+                        "Log in to open the main screen."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
 
-                        Text(
-                            text = if (isMemberSignup) {
-                                "Use your organization ID to join your campus, company, or institution."
-                            } else {
-                                "Sign up without joining an organization. You'll see public places."
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = AndroidCard.copy(alpha = 0.85f)
-                        )
-                    }
-
-                    LoginField(
-                        value = email,
-                        onValueChange = { email = it },
-                        label = "Email"
+                if (isRegisterMode) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
                     )
+                }
 
-                    LoginField(
-                        value = password,
-                        onValueChange = { password = it },
-                        label = if (isSignupMode) "Password (min 8 characters)" else "Password",
-                        isPassword = true
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("Email") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                uiState.error?.let { error ->
+                    Text(
+                        text = error,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
                     )
+                }
 
-                    if (isSignupMode) {
-                        LoginField(
-                            value = fullName,
-                            onValueChange = { fullName = it },
-                            label = "Full name (optional)"
-                        )
-                    }
-
-                    if (!isSignupMode || isMemberSignup) {
-                        LoginField(
-                            value = organizationId,
-                            onValueChange = { organizationId = it },
-                            label = if (isSignupMode) "Organization ID" else "Organization ID (optional)"
-                        )
-                    }
-
-                    if (uiState.error != null && uiState.mfaChallengeToken == null) {
-                        Text(
-                            text = uiState.error ?: "",
-                            color = AndroidCard,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    MaterialTheme.colorScheme.error.copy(alpha = 0.75f),
-                                    RoundedCornerShape(10.dp)
-                                )
-                                .padding(10.dp)
-                        )
-                    }
-
-                    Button(
-                        onClick = {
-                            if (isSignupMode) {
-                                viewModel.signup(
-                                    email = email,
-                                    password = password,
-                                    fullName = fullName,
-                                    organizationId = if (isMemberSignup) organizationId else null
-                                )
-                            } else {
-                                viewModel.login(
-                                    email = email,
-                                    password = password,
-                                    organizationId = organizationId.ifBlank { null }
-                                )
-                            }
-                        },
-                        enabled = canSubmit && !uiState.isLoading,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = AndroidCard,
-                            contentColor = Blue700
-                        )
-                    ) {
-                        if (uiState.isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                color = Blue700,
-                                strokeWidth = 2.dp
-                            )
+                Button(
+                    onClick = {
+                        if (isRegisterMode) {
+                            viewModel.register(name, email, password)
                         } else {
                             Text(
                                 text = if (isSignupMode) "Create Account" else "Sign In",
                                 style = MaterialTheme.typography.titleMedium
                             )
                         }
-                    }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                ) {
+                    Text(if (isRegisterMode) "Create account" else "Log in")
                 }
             }
 
-            if (!isSignupMode) {
-                Spacer(modifier = Modifier.height(12.dp))
-
-                TextButton(onClick = {}) {
+                TextButton(
+                    onClick = { isRegisterMode = !isRegisterMode },
+                    modifier = Modifier.align(Alignment.End),
+                ) {
                     Text(
-                        text = "Forgot password?",
-                        color = AndroidCard.copy(alpha = 0.95f)
+                        if (isRegisterMode) {
+                            "Already have an account?"
+                        } else {
+                            "Need to create an account?"
+                        }
                     )
                 }
             }
@@ -358,119 +294,4 @@ private fun ToggleButton(
     ) {
         Text(text)
     }
-}
-
-@Composable
-private fun LoginField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    isPassword: Boolean = false
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        placeholder = { Text(label) },
-        singleLine = true,
-        visualTransformation = if (isPassword) {
-            PasswordVisualTransformation()
-        } else {
-            androidx.compose.ui.text.input.VisualTransformation.None
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = AndroidCard,
-            unfocusedContainerColor = AndroidCard,
-            focusedBorderColor = AndroidCard,
-            unfocusedBorderColor = AndroidCard,
-            focusedTextColor = Slate900,
-            unfocusedTextColor = Slate900,
-            focusedPlaceholderColor = Slate500,
-            unfocusedPlaceholderColor = Slate500
-        )
-    )
-}
-
-@Composable
-private fun GuestDivider() {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        HorizontalDivider(
-            modifier = Modifier.weight(1f),
-            color = AndroidCard.copy(alpha = 0.35f)
-        )
-
-        Text(
-            text = "or",
-            color = AndroidCard.copy(alpha = 0.85f),
-            modifier = Modifier.padding(horizontal = 12.dp)
-        )
-
-        HorizontalDivider(
-            modifier = Modifier.weight(1f),
-            color = AndroidCard.copy(alpha = 0.35f)
-        )
-    }
-}
-
-@Composable
-private fun MfaCodeDialog(
-    isLoading: Boolean,
-    error: String?,
-    onVerify: (String) -> Unit
-) {
-    var code by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = {},
-        title = {
-            Text("Enter sign-in code")
-        },
-        text = {
-            Column {
-                Text(
-                    text = "Check your email or authenticator app and enter the code.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                OutlinedTextField(
-                    value = code,
-                    onValueChange = { code = it },
-                    label = { Text("Code") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                error?.let {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = it,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onVerify(code) },
-                enabled = !isLoading
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp))
-                } else {
-                    Text("Verify")
-                }
-            }
-        }
-    )
 }

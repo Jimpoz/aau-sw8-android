@@ -747,7 +747,7 @@ private fun containsPoint(polygon: List<Offset>, point: Offset): Boolean {
         val previous = polygon[previousIndex]
 
         val intersects = ((current.y > point.y) != (previous.y > point.y)) &&
-                (point.x < (previous.x - current.x) * (point.y - current.y) / ((previous.y - current.y).coerceAtLeast(0.0001f)) + current.x)
+            (point.x < (previous.x - current.x) * (point.y - current.y) / ((previous.y - current.y).coerceAtLeast(0.0001f)) + current.x)
 
         if (intersects) {
             contains = !contains
