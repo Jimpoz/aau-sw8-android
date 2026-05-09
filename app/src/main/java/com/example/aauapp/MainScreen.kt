@@ -18,8 +18,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import com.example.aauapp.ui.theme.*
 
 enum class AppDestination(val title: String) {
     MainMenu(""),
@@ -30,9 +28,13 @@ enum class AppDestination(val title: String) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
+    isDarkMode: Boolean,
+    onDarkModeChange: (Boolean) -> Unit,
     userSessionViewModel: UserSessionViewModel,
 ) {
-    var currentDestination by rememberSaveable { mutableStateOf(AppDestination.MainMenu) }
+    var currentDestination by rememberSaveable {
+        mutableStateOf(AppDestination.MainMenu)
+    }
 
     BackHandler(enabled = currentDestination != AppDestination.MainMenu) {
         currentDestination = AppDestination.MainMenu
@@ -44,13 +46,15 @@ fun MainScreen(
                 TopAppBar(
                     title = { Text(currentDestination.title) },
                     navigationIcon = {
-                        IconButton(onClick = { currentDestination = AppDestination.MainMenu }) {
+                        IconButton(
+                            onClick = { currentDestination = AppDestination.MainMenu }
+                        ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back to main menu",
+                                contentDescription = "Back to main menu"
                             )
                         }
-                    },
+                    }
                 )
             }
         }
@@ -68,11 +72,15 @@ fun MainScreen(
                     onOpenInteractiveMap = {
                         currentDestination = AppDestination.InteractiveMap
                     },
-                    onLogout = userSessionViewModel::logout,
+                    onLogout = userSessionViewModel::logout
                 )
+
                 AppDestination.NavigationTools -> NavigationToolsScreen(
-                    userSessionViewModel = userSessionViewModel,
+                    isDarkMode = isDarkMode,
+                    onDarkModeChange = onDarkModeChange,
+                    userSessionViewModel = userSessionViewModel
                 )
+
                 AppDestination.InteractiveMap -> InteractiveRoomMapScreen()
             }
         }
