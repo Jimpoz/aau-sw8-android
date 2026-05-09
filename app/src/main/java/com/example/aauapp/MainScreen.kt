@@ -1,7 +1,9 @@
 package com.example.aauapp
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
@@ -11,6 +13,7 @@ import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.aauapp.ui.theme.*
@@ -23,8 +26,16 @@ fun MainScreen(
 ) {
     val session by userSessionViewModel.uiState.collectAsState()
 
-    var selectedTab by remember { mutableIntStateOf(0) }
-    var showRoomUpload by remember { mutableStateOf(false) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var showRoomUpload by rememberSaveable { mutableStateOf(false) }
+
+    BackHandler(enabled = showRoomUpload || selectedTab > 4) {
+        if (showRoomUpload) {
+            showRoomUpload = false
+        } else {
+            selectedTab = 0
+        }
+    }
 
     Scaffold(
         containerColor = Slate50,
@@ -37,7 +48,7 @@ fun MainScreen(
                     NavigationBarItem(
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
-                        icon = { Icon(Icons.Default.Map, null) },
+                        icon = { Icon(Icons.Default.Map, contentDescription = null) },
                         label = { Text("Map") },
                         colors = navColors()
                     )
@@ -45,7 +56,7 @@ fun MainScreen(
                     NavigationBarItem(
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
-                        icon = { Icon(Icons.Outlined.ChatBubbleOutline, null) },
+                        icon = { Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null) },
                         label = { Text("Assistant") },
                         colors = navColors()
                     )
@@ -53,7 +64,7 @@ fun MainScreen(
                     NavigationBarItem(
                         selected = selectedTab == 2,
                         onClick = { selectedTab = 2 },
-                        icon = { Icon(Icons.Outlined.CameraAlt, null) },
+                        icon = { Icon(Icons.Outlined.CameraAlt, contentDescription = null) },
                         label = { Text("Camera") },
                         colors = navColors()
                     )
@@ -61,7 +72,7 @@ fun MainScreen(
                     NavigationBarItem(
                         selected = selectedTab == 3,
                         onClick = { selectedTab = 3 },
-                        icon = { Icon(Icons.Default.Explore, null) },
+                        icon = { Icon(Icons.Default.Explore, contentDescription = null) },
                         label = { Text("Explore") },
                         colors = navColors()
                     )
@@ -69,7 +80,7 @@ fun MainScreen(
                     NavigationBarItem(
                         selected = selectedTab == 4,
                         onClick = { selectedTab = 4 },
-                        icon = { Icon(Icons.Default.Person, null) },
+                        icon = { Icon(Icons.Default.Person, contentDescription = null) },
                         label = { Text("Profile") },
                         colors = navColors()
                     )
@@ -79,6 +90,7 @@ fun MainScreen(
     ) { paddingValues ->
         Box(
             modifier = Modifier
+                .fillMaxSize()
                 .background(Slate50)
                 .padding(paddingValues)
         ) {
@@ -90,9 +102,7 @@ fun MainScreen(
                 when (selectedTab) {
                     0 -> CampusSelectionScreenWithOpen(
                         userSessionViewModel = userSessionViewModel,
-                        onOpenCampus = {
-                            selectedTab = 5
-                        }
+                        onOpenCampus = { selectedTab = 5 }
                     )
 
                     1 -> AssistantScreen()
@@ -113,14 +123,10 @@ fun MainScreen(
                     5 -> CampusFloorPickerScreen(
                         campusId = session.profile.campusId ?: "",
                         userSessionViewModel = userSessionViewModel,
-                        onOpenFloor = {
-                            selectedTab = 6
-                        }
+                        onOpenFloor = { selectedTab = 6 }
                     )
 
-                    6 -> FloorPlanScreen(
-                        floorId = session.profile.defaultFloorId ?: ""
-                    )
+                    6 -> InteractiveRoomMapScreen()
                 }
             }
         }

@@ -21,6 +21,7 @@ class UserSessionStore(private val context: Context) {
     val profileFlow: Flow<UserProfileUi> =
         context.userSessionDataStore.data.map { preferences ->
             val json = preferences[Keys.PROFILE_JSON]
+
             if (json.isNullOrBlank()) {
                 UserProfileUi()
             } else {
