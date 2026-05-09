@@ -24,8 +24,8 @@ val Blue700 = Color(0xFF1D4ED8)
 
 val Success = Color(0xFF22C55E)
 
-val AndroidBlue = Blue600
 val AndroidBackground = Slate50
 val AndroidCard = Color.White
+val AndroidBlue = Blue600
 val AndroidTextPrimary = Slate900
 val AndroidTextSecondary = Slate500

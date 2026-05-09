@@ -19,10 +19,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.example.aauapp.ui.theme.AndroidCard
-import com.example.aauapp.ui.theme.Blue600
-import com.example.aauapp.ui.theme.Slate50
-import com.example.aauapp.ui.theme.Slate500
+import com.example.aauapp.ui.theme.*
 
 enum class AppDestination(val title: String) {
     MainMenu(""),

@@ -14,8 +14,8 @@ data class CampusFloorPickerUiState(
     val isLoading: Boolean = false,
     val campusName: String? = null,
     val buildings: List<BuildingMapDto> = emptyList(),
-    val selectedBuildingId: String? = null,
     val floors: List<FloorMapDto> = emptyList(),
+    val selectedBuildingId: String? = null,
     val selectedFloorId: String? = null,
     val error: String? = null
 )
@@ -28,45 +28,58 @@ class CampusFloorPickerViewModel : ViewModel() {
     val uiState: StateFlow<CampusFloorPickerUiState> = _uiState.asStateFlow()
 
     fun loadCampus(campusId: String) {
+        if (campusId.isBlank()) return
+
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _uiState.value = _uiState.value.copy(
+                isLoading = true,
+                error = null
+            )
 
             try {
-                val map = repository.getCampusMapLight(campusId)
-                val buildings = map.campus.buildings
-                val firstBuilding = buildings.firstOrNull()
-                val floors = firstBuilding?.floors ?: emptyList()
-                val firstFloor = floors.firstOrNull()
+                val campusMap = repository.getCampusMapLight(campusId)
 
-                _uiState.value = _uiState.value.copy(
+                val buildings: List<BuildingMapDto> = campusMap.campus.buildings
+                val firstBuilding: BuildingMapDto? = buildings.firstOrNull()
+
+                val floors: List<FloorMapDto> = firstBuilding?.floors.orEmpty()
+                val firstFloor: FloorMapDto? = floors.firstOrNull()
+
+                _uiState.value = CampusFloorPickerUiState(
                     isLoading = false,
-                    campusName = map.campus.name,
+                    campusName = campusMap.campus.name,
                     buildings = buildings,
-                    selectedBuildingId = firstBuilding?.id,
                     floors = floors,
+                    selectedBuildingId = firstBuilding?.id,
                     selectedFloorId = firstFloor?.id,
                     error = null
                 )
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
+                _uiState.value = CampusFloorPickerUiState(
                     isLoading = false,
-                    error = e.toString()
+                    error = e.message ?: "Failed to load campus"
                 )
             }
         }
     }
 
     fun selectBuilding(buildingId: String) {
-        val building = _uiState.value.buildings.firstOrNull { it.id == buildingId }
-        val floors = building?.floors ?: emptyList()
+        val building: BuildingMapDto? =
+            _uiState.value.buildings.firstOrNull { it.id == buildingId }
+
+        val floors: List<FloorMapDto> = building?.floors.orEmpty()
+        val firstFloor: FloorMapDto? = floors.firstOrNull()
+
         _uiState.value = _uiState.value.copy(
             selectedBuildingId = buildingId,
             floors = floors,
-            selectedFloorId = floors.firstOrNull()?.id
+            selectedFloorId = firstFloor?.id
         )
     }
 
     fun selectFloor(floorId: String) {
-        _uiState.value = _uiState.value.copy(selectedFloorId = floorId)
+        _uiState.value = _uiState.value.copy(
+            selectedFloorId = floorId
+        )
     }
 }

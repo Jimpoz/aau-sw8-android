@@ -1,6 +1,5 @@
 package com.example.aauapp
 
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.aauapp.data.remote.BackendRepository
@@ -33,21 +32,17 @@ class CampusSelectionViewModel : ViewModel() {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
             try {
-                Log.d("CAMPUS_DEBUG", "Loading campuses...")
                 val campuses = repository.getCampuses()
-                Log.d("CAMPUS_DEBUG", "Loaded campuses count = ${campuses.size}")
-
-                _uiState.value = _uiState.value.copy(
+                _uiState.value = CampusSelectionUiState(
                     isLoading = false,
                     campuses = campuses,
                     selectedCampus = campuses.firstOrNull(),
                     error = null
                 )
             } catch (e: Exception) {
-                Log.e("CAMPUS_DEBUG", "Campus load failed", e)
-                _uiState.value = _uiState.value.copy(
+                _uiState.value = CampusSelectionUiState(
                     isLoading = false,
-                    error = e.toString()
+                    error = e.message ?: "Failed to load campuses"
                 )
             }
         }

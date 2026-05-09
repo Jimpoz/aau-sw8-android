@@ -36,7 +36,7 @@ class FloorPlanViewModel : ViewModel() {
 
             try {
                 val floor: FloorDto = repository.getFloor(floorId)
-                val spaces: List<SpaceDisplayDto> = repository.getFloorSpaces(floorId)
+                val spaces: List<SpaceDisplayDto> = repository.getFloorDisplay(floorId)
 
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,

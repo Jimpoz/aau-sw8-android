@@ -102,7 +102,10 @@ fun LoginScreen(
                         if (isRegisterMode) {
                             viewModel.register(name, email, password)
                         } else {
-                            viewModel.login(email, password)
+                            Text(
+                                text = if (isSignupMode) "Create Account" else "Sign In",
+                                style = MaterialTheme.typography.titleMedium
+                            )
                         }
                     },
                     modifier = Modifier
@@ -111,6 +114,7 @@ fun LoginScreen(
                 ) {
                     Text(if (isRegisterMode) "Create account" else "Log in")
                 }
+            }
 
                 TextButton(
                     onClick = { isRegisterMode = !isRegisterMode },
@@ -125,6 +129,169 @@ fun LoginScreen(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            TextButton(
+                onClick = { isSignupMode = !isSignupMode }
+            ) {
+                Text(
+                    text = if (isSignupMode) {
+                        "Already have an account? Sign in"
+                    } else {
+                        "Don't have an account? Sign up"
+                    },
+                    color = AndroidCard.copy(alpha = 0.95f)
+                )
+            }
+
+            GuestDivider()
+
+            Button(
+                onClick = { viewModel.guestLogin() },
+                enabled = !uiState.isLoading,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = AndroidCard.copy(alpha = 0.18f),
+                    contentColor = AndroidCard
+                )
+            ) {
+                Icon(Icons.Default.Person, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Continue as guest")
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "Browse public places without creating an account.",
+                style = MaterialTheme.typography.bodySmall,
+                color = AndroidCard.copy(alpha = 0.8f)
+            )
         }
+    }
+
+    if (uiState.mfaChallengeToken != null) {
+        MfaCodeDialog(
+            isLoading = uiState.isLoading,
+            error = uiState.error,
+            onVerify = { code ->
+                viewModel.completeMfaLogin(code)
+            }
+        )
+    }
+}
+
+@Composable
+private fun Header(isSignupMode: Boolean) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .clip(CircleShape)
+                .background(AndroidCard.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Map,
+                contentDescription = null,
+                tint = AndroidCard,
+                modifier = Modifier.size(38.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Text(
+            text = "Ariadne",
+            style = MaterialTheme.typography.headlineLarge,
+            color = AndroidCard
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = if (isSignupMode) "Create your account" else "Sign in to continue",
+            style = MaterialTheme.typography.bodyMedium,
+            color = AndroidCard.copy(alpha = 0.85f)
+        )
+    }
+}
+
+@Composable
+private fun ModeToggle(
+    isSignupMode: Boolean,
+    onChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AndroidCard.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
+            .padding(4.dp)
+    ) {
+        ToggleButton(
+            text = "Sign In",
+            selected = !isSignupMode,
+            modifier = Modifier.weight(1f),
+            onClick = { onChange(false) }
+        )
+
+        ToggleButton(
+            text = "Sign Up",
+            selected = isSignupMode,
+            modifier = Modifier.weight(1f),
+            onClick = { onChange(true) }
+        )
+    }
+}
+
+@Composable
+private fun SignupKindToggle(
+    isMemberSignup: Boolean,
+    onChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AndroidCard.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+            .padding(4.dp)
+    ) {
+        ToggleButton(
+            text = "Member",
+            selected = isMemberSignup,
+            modifier = Modifier.weight(1f),
+            onClick = { onChange(true) }
+        )
+
+        ToggleButton(
+            text = "Personal",
+            selected = !isMemberSignup,
+            modifier = Modifier.weight(1f),
+            onClick = { onChange(false) }
+        )
+    }
+}
+
+@Composable
+private fun ToggleButton(
+    text: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.height(40.dp),
+        shape = RoundedCornerShape(10.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (selected) AndroidCard else AndroidCard.copy(alpha = 0.0f),
+            contentColor = if (selected) Blue700 else AndroidCard
+        ),
+        elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
+    ) {
+        Text(text)
     }
 }
