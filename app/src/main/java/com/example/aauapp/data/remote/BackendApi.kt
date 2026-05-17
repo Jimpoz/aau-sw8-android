@@ -10,6 +10,7 @@ import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
 import retrofit2.Response
+import retrofit2.http.HTTP
 
 data class HealthResponseDto(val status: String)
 
@@ -245,6 +246,10 @@ data class PasswordResetRequestDto(
     val new_password: String
 )
 
+data class DeleteAccountRequestDto(
+    val password: String
+)
+
 interface BackendApi {
 
     @GET("health")
@@ -264,6 +269,11 @@ interface BackendApi {
 
     @GET("api/v1/auth/me")
     suspend fun me(): AuthMeDto
+
+    @HTTP(method = "DELETE", path = "api/v1/auth/me", hasBody = true)
+    suspend fun deleteAccount(
+        @Body request: DeleteAccountRequestDto
+    ): Response<Unit>
 
     @GET("api/v1/mobile/campuses")
     suspend fun getCampuses(): List<CampusDto>

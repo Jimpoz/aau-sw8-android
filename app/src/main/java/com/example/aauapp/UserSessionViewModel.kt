@@ -413,6 +413,38 @@ class UserSessionViewModel(
         )
     }
 
+    fun deleteProfile(password: String) {
+        if (password.isBlank()) {
+            _uiState.value = _uiState.value.copy(error = "Enter your password")
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                isLoading = true,
+                error = null,
+                message = null
+            )
+
+            try {
+                repository.deleteAccount(password)
+
+                AuthTokenStore.token = null
+                store.clearProfile()
+
+                _uiState.value = UserSessionUiState(
+                    isLoading = false,
+                    message = "Profile deleted"
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Could not delete profile"
+                )
+            }
+        }
+    }
+
     fun logout() {
         AuthTokenStore.token = null
 
