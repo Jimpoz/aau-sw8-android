@@ -11,12 +11,25 @@ import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.example.aauapp.ui.theme.*
+import com.example.aauapp.ui.theme.AndroidCard
+import com.example.aauapp.ui.theme.Blue600
+import com.example.aauapp.ui.theme.Slate50
+import com.example.aauapp.ui.theme.Slate500
 
 @Composable
 fun MainScreen(
@@ -25,10 +38,13 @@ fun MainScreen(
     userSessionViewModel: UserSessionViewModel
 ) {
     val session by userSessionViewModel.uiState.collectAsState()
+    val profile = session.profile
 
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var showRoomUpload by rememberSaveable { mutableStateOf(false) }
-    var showFloorPicker by rememberSaveable { mutableStateOf(true) }
+    var showFloorPicker by rememberSaveable(profile.defaultFloorId) {
+        mutableStateOf(profile.defaultFloorId.isNullOrBlank())
+    }
 
     BackHandler(enabled = showRoomUpload) {
         showRoomUpload = false
@@ -46,7 +62,9 @@ fun MainScreen(
                         selected = selectedTab == 0,
                         onClick = {
                             selectedTab = 0
-                            showFloorPicker = true
+                            if (profile.defaultFloorId.isNullOrBlank()) {
+                                showFloorPicker = true
+                            }
                         },
                         icon = { Icon(Icons.Default.Map, contentDescription = null) },
                         label = { Text("Map") },
@@ -101,13 +119,13 @@ fun MainScreen(
             } else {
                 when (selectedTab) {
                     0 -> {
-                        val profile = session.profile
-
                         when {
                             profile.campusId.isNullOrBlank() -> {
                                 CampusSelectionScreenWithOpen(
                                     userSessionViewModel = userSessionViewModel,
-                                    onOpenCampus = { showFloorPicker = true }
+                                    onOpenCampus = {
+                                        showFloorPicker = true
+                                    }
                                 )
                             }
 
@@ -115,13 +133,22 @@ fun MainScreen(
                                 CampusFloorPickerScreen(
                                     campusId = profile.campusId,
                                     userSessionViewModel = userSessionViewModel,
-                                    onOpenFloor = { showFloorPicker = false }
+                                    onOpenFloor = {
+                                        showFloorPicker = false
+                                    }
                                 )
                             }
 
                             else -> {
-                                FloorPlanScreen(
-                                    floorId = profile.defaultFloorId
+                                googleMapScreen(
+                                    floorId = profile.defaultFloorId,
+                                    floorName = "Ground Floor",
+                                    onChangeFloor = {
+                                        showFloorPicker = true
+                                    },
+                                    onEditIndoorMap = {
+                                        showFloorPicker = true
+                                    }
                                 )
                             }
                         }

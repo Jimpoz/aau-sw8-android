@@ -151,6 +151,8 @@ data class RouteStepDto(
     val building_id: String? = null,
     val centroid_x: Double? = null,
     val centroid_y: Double? = null,
+    val centroid_lat: Double? = null,
+    val centroid_lng: Double? = null,
     val instruction: String? = null,
     val cost: Double? = null
 )
@@ -159,7 +161,8 @@ data class NavigationResultDto(
     val from_space_id: String,
     val to_space_id: String,
     val total_cost: Double,
-    val steps: List<RouteStepDto> = emptyList()
+    val steps: List<RouteStepDto> = emptyList(),
+    val polyline: List<List<Double>> = emptyList()
 )
 
 data class AssistantChatRequest(
