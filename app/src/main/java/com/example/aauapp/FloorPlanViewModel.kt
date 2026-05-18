@@ -20,6 +20,7 @@ data class FloorPlanUiState(
     val filteredSpaces: List<SpaceDisplayDto> = emptyList(),
     val selectedSpaceId: String? = null,
     val routeSteps: List<RouteStepDto> = emptyList(),
+    val routePolyline: List<List<Double>> = emptyList(),
     val error: String? = null
 )
 
@@ -32,7 +33,12 @@ class FloorPlanViewModel : ViewModel() {
 
     fun loadFloor(floorId: String) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _uiState.value = _uiState.value.copy(
+                isLoading = true,
+                error = null,
+                routeSteps = emptyList(),
+                routePolyline = emptyList()
+            )
 
             try {
                 val floor: FloorDto = repository.getFloor(floorId)
@@ -44,6 +50,7 @@ class FloorPlanViewModel : ViewModel() {
                     floorName = floor.display_name ?: floor.id,
                     spaces = spaces,
                     filteredSpaces = spaces,
+                    selectedSpaceId = spaces.firstOrNull()?.id,
                     error = null
                 )
             } catch (e: Exception) {
@@ -56,16 +63,25 @@ class FloorPlanViewModel : ViewModel() {
     }
 
     fun selectSpace(spaceId: String) {
-        _uiState.value = _uiState.value.copy(selectedSpaceId = spaceId)
+        _uiState.value = _uiState.value.copy(
+            selectedSpaceId = spaceId,
+            error = null
+        )
     }
 
     fun computeRouteToSelected() {
         val spaces = _uiState.value.spaces
         val destination = _uiState.value.selectedSpaceId ?: return
-        val start = spaces.firstOrNull { it.id != destination }?.id ?: return
+
+        val start = spaces.firstOrNull {
+            it.id != destination && it.is_navigable != false
+        }?.id ?: return
 
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _uiState.value = _uiState.value.copy(
+                isLoading = true,
+                error = null
+            )
 
             try {
                 val result: NavigationResultDto = repository.navigate(
@@ -75,7 +91,9 @@ class FloorPlanViewModel : ViewModel() {
 
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    routeSteps = result.steps
+                    routeSteps = result.steps,
+                    routePolyline = result.polyline,
+                    error = null
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
