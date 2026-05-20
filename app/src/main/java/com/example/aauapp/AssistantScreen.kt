@@ -10,7 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.example.aauapp.ui.theme.*
+import com.example.aauapp.ui.theme.Blue600
 
 @Composable
 fun AssistantScreen(
@@ -22,33 +22,58 @@ fun AssistantScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Slate50)
+            .background(MaterialTheme.colorScheme.background)
             .padding(16.dp)
     ) {
-        Text("Assistant", style = MaterialTheme.typography.headlineLarge)
+        Text(
+            text = "Assistant",
+            style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.onBackground
+        )
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        LazyColumn(modifier = Modifier.weight(1f)) {
+        LazyColumn(
+            modifier = Modifier.weight(1f)
+        ) {
             items(messages) { message ->
                 ChatBubble(message)
             }
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             TextField(
                 value = input,
                 onValueChange = { input = it },
                 modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(24.dp)
+                shape = RoundedCornerShape(24.dp),
+                placeholder = {
+                    Text("Ask something...")
+                },
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                    unfocusedIndicatorColor = MaterialTheme.colorScheme.surfaceVariant
+                )
             )
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            Button(onClick = {
-                viewModel.sendMessage(input)
-                input = ""
-            }) {
+            Button(
+                onClick = {
+                    if (input.isNotBlank()) {
+                        viewModel.sendMessage(input)
+                        input = ""
+                    }
+                }
+            ) {
                 Text("Send")
             }
         }
@@ -66,14 +91,22 @@ private fun ChatBubble(message: ChatMessage) {
         Card(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(
-                containerColor = if (isUser) Blue600 else AndroidCard
+                containerColor = if (isUser) {
+                    Blue600
+                } else {
+                    MaterialTheme.colorScheme.surface
+                }
             ),
             modifier = Modifier.padding(6.dp)
         ) {
             Text(
-                message.text,
+                text = message.text,
                 modifier = Modifier.padding(12.dp),
-                color = if (isUser) AndroidCard else AndroidTextPrimary
+                color = if (isUser) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                }
             )
         }
     }

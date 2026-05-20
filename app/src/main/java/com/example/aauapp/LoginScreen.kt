@@ -16,8 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import com.example.aauapp.ui.theme.*
+import com.example.aauapp.ui.theme.Blue500
+import com.example.aauapp.ui.theme.Blue700
 
 @Composable
 fun LoginScreen(
@@ -31,13 +33,16 @@ fun LoginScreen(
     var fullName by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var organizationId by remember { mutableStateOf("aau") }
+    var organizationId by remember { mutableStateOf("") }
 
     val canSubmit =
         email.isNotBlank() &&
                 password.isNotBlank() &&
                 (!isSignupMode || password.length >= 8) &&
                 (!isSignupMode || !isMemberSignup || organizationId.isNotBlank())
+
+    val white = MaterialTheme.colorScheme.onPrimary
+    val glass = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.18f)
 
     Box(
         modifier = Modifier
@@ -70,7 +75,7 @@ fun LoginScreen(
             Card(
                 shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = AndroidCard.copy(alpha = 0.18f)
+                    containerColor = glass
                 ),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -92,7 +97,7 @@ fun LoginScreen(
                                 "Sign up without joining an organization. You'll see public places."
                             },
                             style = MaterialTheme.typography.bodySmall,
-                            color = AndroidCard.copy(alpha = 0.85f)
+                            color = white.copy(alpha = 0.85f)
                         )
                     }
 
@@ -128,12 +133,12 @@ fun LoginScreen(
                     if (uiState.error != null && uiState.mfaChallengeToken == null) {
                         Text(
                             text = uiState.error ?: "",
-                            color = AndroidCard,
+                            color = MaterialTheme.colorScheme.onError,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(
-                                    MaterialTheme.colorScheme.error.copy(alpha = 0.75f),
+                                    MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
                                     RoundedCornerShape(10.dp)
                                 )
                                 .padding(10.dp)
@@ -163,7 +168,7 @@ fun LoginScreen(
                             .height(52.dp),
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = AndroidCard,
+                            containerColor = MaterialTheme.colorScheme.surface,
                             contentColor = Blue700
                         )
                     ) {
@@ -189,7 +194,7 @@ fun LoginScreen(
                 TextButton(onClick = {}) {
                     Text(
                         text = "Forgot password?",
-                        color = AndroidCard.copy(alpha = 0.95f)
+                        color = white.copy(alpha = 0.95f)
                     )
                 }
             }
@@ -205,7 +210,7 @@ fun LoginScreen(
                     } else {
                         "Don't have an account? Sign up"
                     },
-                    color = AndroidCard.copy(alpha = 0.95f)
+                    color = white.copy(alpha = 0.95f)
                 )
             }
 
@@ -219,8 +224,8 @@ fun LoginScreen(
                     .height(48.dp),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = AndroidCard.copy(alpha = 0.18f),
-                    contentColor = AndroidCard
+                    containerColor = glass,
+                    contentColor = white
                 )
             ) {
                 Icon(Icons.Default.Person, contentDescription = null)
@@ -233,7 +238,7 @@ fun LoginScreen(
             Text(
                 text = "Browse public places without creating an account.",
                 style = MaterialTheme.typography.bodySmall,
-                color = AndroidCard.copy(alpha = 0.8f)
+                color = white.copy(alpha = 0.8f)
             )
         }
     }
@@ -251,18 +256,20 @@ fun LoginScreen(
 
 @Composable
 private fun Header(isSignupMode: Boolean) {
+    val white = MaterialTheme.colorScheme.onPrimary
+
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
                 .size(64.dp)
                 .clip(CircleShape)
-                .background(AndroidCard.copy(alpha = 0.15f)),
+                .background(white.copy(alpha = 0.15f)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Default.Map,
                 contentDescription = null,
-                tint = AndroidCard,
+                tint = white,
                 modifier = Modifier.size(38.dp)
             )
         }
@@ -272,7 +279,7 @@ private fun Header(isSignupMode: Boolean) {
         Text(
             text = "Ariadne",
             style = MaterialTheme.typography.headlineLarge,
-            color = AndroidCard
+            color = white
         )
 
         Spacer(modifier = Modifier.height(4.dp))
@@ -280,7 +287,7 @@ private fun Header(isSignupMode: Boolean) {
         Text(
             text = if (isSignupMode) "Create your account" else "Sign in to continue",
             style = MaterialTheme.typography.bodyMedium,
-            color = AndroidCard.copy(alpha = 0.85f)
+            color = white.copy(alpha = 0.85f)
         )
     }
 }
@@ -290,10 +297,12 @@ private fun ModeToggle(
     isSignupMode: Boolean,
     onChange: (Boolean) -> Unit
 ) {
+    val white = MaterialTheme.colorScheme.onPrimary
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(AndroidCard.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
+            .background(white.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
             .padding(4.dp)
     ) {
         ToggleButton(
@@ -317,10 +326,12 @@ private fun SignupKindToggle(
     isMemberSignup: Boolean,
     onChange: (Boolean) -> Unit
 ) {
+    val white = MaterialTheme.colorScheme.onPrimary
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(AndroidCard.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+            .background(white.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
             .padding(4.dp)
     ) {
         ToggleButton(
@@ -346,13 +357,23 @@ private fun ToggleButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
+    val white = MaterialTheme.colorScheme.onPrimary
+
     Button(
         onClick = onClick,
         modifier = modifier.height(40.dp),
         shape = RoundedCornerShape(10.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = if (selected) AndroidCard else AndroidCard.copy(alpha = 0.0f),
-            contentColor = if (selected) Blue700 else AndroidCard
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.surface
+            } else {
+                white.copy(alpha = 0.0f)
+            },
+            contentColor = if (selected) {
+                Blue700
+            } else {
+                white
+            }
         ),
         elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
     ) {
@@ -375,27 +396,30 @@ private fun LoginField(
         visualTransformation = if (isPassword) {
             PasswordVisualTransformation()
         } else {
-            androidx.compose.ui.text.input.VisualTransformation.None
+            VisualTransformation.None
         },
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp),
         shape = RoundedCornerShape(12.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = AndroidCard,
-            unfocusedContainerColor = AndroidCard,
-            focusedBorderColor = AndroidCard,
-            unfocusedBorderColor = AndroidCard,
-            focusedTextColor = Slate900,
-            unfocusedTextColor = Slate900,
-            focusedPlaceholderColor = Slate500,
-            unfocusedPlaceholderColor = Slate500
+            focusedContainerColor = MaterialTheme.colorScheme.surface,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+            focusedBorderColor = MaterialTheme.colorScheme.surface,
+            unfocusedBorderColor = MaterialTheme.colorScheme.surface,
+            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+            focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            cursorColor = MaterialTheme.colorScheme.primary
         )
     )
 }
 
 @Composable
 private fun GuestDivider() {
+    val white = MaterialTheme.colorScheme.onPrimary
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -404,18 +428,18 @@ private fun GuestDivider() {
     ) {
         HorizontalDivider(
             modifier = Modifier.weight(1f),
-            color = AndroidCard.copy(alpha = 0.35f)
+            color = white.copy(alpha = 0.35f)
         )
 
         Text(
             text = "or",
-            color = AndroidCard.copy(alpha = 0.85f),
+            color = white.copy(alpha = 0.85f),
             modifier = Modifier.padding(horizontal = 12.dp)
         )
 
         HorizontalDivider(
             modifier = Modifier.weight(1f),
-            color = AndroidCard.copy(alpha = 0.35f)
+            color = white.copy(alpha = 0.35f)
         )
     }
 }

@@ -12,12 +12,14 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -26,10 +28,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.example.aauapp.ui.theme.AndroidCard
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.aauapp.ui.theme.Blue600
-import com.example.aauapp.ui.theme.Slate50
-import com.example.aauapp.ui.theme.Slate500
 
 @Composable
 fun MainScreen(
@@ -40,10 +40,39 @@ fun MainScreen(
     val session by userSessionViewModel.uiState.collectAsState()
     val profile = session.profile
 
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
-    var showRoomUpload by rememberSaveable { mutableStateOf(false) }
-    var showFloorPicker by rememberSaveable(profile.defaultFloorId) {
-        mutableStateOf(profile.defaultFloorId.isNullOrBlank())
+    val floorPlanViewModel: FloorPlanViewModel = viewModel()
+    val floorState by floorPlanViewModel.uiState.collectAsState()
+
+    var selectedTab by rememberSaveable("main_selected_tab") {
+        mutableIntStateOf(0)
+    }
+
+    var showRoomUpload by rememberSaveable("show_room_upload") {
+        mutableStateOf(false)
+    }
+
+    var showFloorPicker by rememberSaveable("show_floor_picker") {
+        mutableStateOf(false)
+    }
+
+    var pendingCameraDetection by rememberSaveable("pending_camera_detection") {
+        mutableStateOf<String?>(null)
+    }
+
+    LaunchedEffect(profile.defaultFloorId) {
+        val floorId = profile.defaultFloorId
+        if (!floorId.isNullOrBlank()) {
+            floorPlanViewModel.loadFloor(floorId)
+        }
+    }
+
+    LaunchedEffect(pendingCameraDetection, floorState.spaces) {
+        val detected = pendingCameraDetection
+
+        if (!detected.isNullOrBlank() && floorState.spaces.isNotEmpty()) {
+            floorPlanViewModel.selectBestMatchingSpace(detected)
+            pendingCameraDetection = null
+        }
     }
 
     BackHandler(enabled = showRoomUpload) {
@@ -51,11 +80,11 @@ fun MainScreen(
     }
 
     Scaffold(
-        containerColor = Slate50,
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             if (!showRoomUpload) {
                 NavigationBar(
-                    containerColor = AndroidCard,
+                    containerColor = MaterialTheme.colorScheme.surface,
                     tonalElevation = 0.dp
                 ) {
                     NavigationBarItem(
@@ -66,40 +95,68 @@ fun MainScreen(
                                 showFloorPicker = true
                             }
                         },
-                        icon = { Icon(Icons.Default.Map, contentDescription = null) },
-                        label = { Text("Map") },
+                        icon = {
+                            Icon(Icons.Default.Map, contentDescription = null)
+                        },
+                        label = {
+                            Text("Map")
+                        },
                         colors = navColors()
                     )
 
                     NavigationBarItem(
                         selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        icon = { Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null) },
-                        label = { Text("Assistant") },
+                        onClick = {
+                            selectedTab = 1
+                        },
+                        icon = {
+                            Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null)
+                        },
+                        label = {
+                            Text("Assistant")
+                        },
                         colors = navColors()
                     )
 
                     NavigationBarItem(
                         selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
-                        icon = { Icon(Icons.Outlined.CameraAlt, contentDescription = null) },
-                        label = { Text("Camera") },
+                        onClick = {
+                            selectedTab = 2
+                        },
+                        icon = {
+                            Icon(Icons.Outlined.CameraAlt, contentDescription = null)
+                        },
+                        label = {
+                            Text("Camera")
+                        },
                         colors = navColors()
                     )
 
                     NavigationBarItem(
                         selected = selectedTab == 3,
-                        onClick = { selectedTab = 3 },
-                        icon = { Icon(Icons.Default.Explore, contentDescription = null) },
-                        label = { Text("Explore") },
+                        onClick = {
+                            selectedTab = 3
+                        },
+                        icon = {
+                            Icon(Icons.Default.Explore, contentDescription = null)
+                        },
+                        label = {
+                            Text("Explore")
+                        },
                         colors = navColors()
                     )
 
                     NavigationBarItem(
                         selected = selectedTab == 4,
-                        onClick = { selectedTab = 4 },
-                        icon = { Icon(Icons.Default.Person, contentDescription = null) },
-                        label = { Text("Profile") },
+                        onClick = {
+                            selectedTab = 4
+                        },
+                        icon = {
+                            Icon(Icons.Default.Person, contentDescription = null)
+                        },
+                        label = {
+                            Text("Profile")
+                        },
                         colors = navColors()
                     )
                 }
@@ -109,65 +166,63 @@ fun MainScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Slate50)
+                .background(MaterialTheme.colorScheme.background)
                 .padding(paddingValues)
         ) {
             if (showRoomUpload) {
                 RoomPhotoUploadScreen(
-                    onBack = { showRoomUpload = false }
+                    onBack = {
+                        showRoomUpload = false
+                    }
                 )
             } else {
                 when (selectedTab) {
                     0 -> {
-                        when {
-                            profile.campusId.isNullOrBlank() -> {
-                                CampusSelectionScreenWithOpen(
-                                    userSessionViewModel = userSessionViewModel,
-                                    onOpenCampus = {
-                                        showFloorPicker = true
-                                    }
-                                )
-                            }
-
-                            showFloorPicker || profile.defaultFloorId.isNullOrBlank() -> {
-                                CampusFloorPickerScreen(
-                                    campusId = profile.campusId,
-                                    userSessionViewModel = userSessionViewModel,
-                                    onOpenFloor = {
-                                        showFloorPicker = false
-                                    }
-                                )
-                            }
-
-                            else -> {
-                                googleMapScreen(
-                                    floorId = profile.defaultFloorId,
-                                    floorName = "Ground Floor",
-                                    onChangeFloor = {
-                                        showFloorPicker = true
-                                    },
-                                    onEditIndoorMap = {
-                                        showFloorPicker = true
-                                    }
-                                )
-                            }
-                        }
+                        GoogleMapScreen(
+                            floorId = profile.defaultFloorId ?: "default",
+                            floorName = floorState.floorName ?: "Ground Floor",
+                            onChangeFloor = {
+                                showFloorPicker = true
+                            },
+                            onEditIndoorMap = {
+                                showFloorPicker = true
+                            },
+                            viewModel = floorPlanViewModel
+                        )
                     }
 
-                    1 -> AssistantScreen()
+                    1 -> {
+                        AssistantScreen()
+                    }
 
-                    2 -> CameraScreen(
-                        onScanRoom = { showRoomUpload = true }
-                    )
+                    2 -> {
+                        CameraScreen(
+                            facilityId = profile.campusId ?: "aau",
+                            onScanRoom = {
+                                showRoomUpload = true
+                            },
+                            onAskDirections = { destination ->
+                                pendingCameraDetection = destination
+                                selectedTab = 0
+                                showFloorPicker = false
+                            }
+                        )
+                    }
 
-                    3 -> ExploreScreen()
+                    3 -> {
+                        ExploreScreen()
+                    }
 
-                    4 -> ProfileScreen(
-                        isDarkMode = isDarkMode,
-                        onDarkModeChange = onDarkModeChange,
-                        onOpenRoomPhotoUpload = { showRoomUpload = true },
-                        viewModel = userSessionViewModel
-                    )
+                    4 -> {
+                        ProfileScreen(
+                            isDarkMode = isDarkMode,
+                            onDarkModeChange = onDarkModeChange,
+                            onOpenRoomPhotoUpload = {
+                                showRoomUpload = true
+                            },
+                            viewModel = userSessionViewModel
+                        )
+                    }
                 }
             }
         }
@@ -178,7 +233,7 @@ fun MainScreen(
 private fun navColors() = NavigationBarItemDefaults.colors(
     selectedIconColor = Blue600,
     selectedTextColor = Blue600,
-    unselectedIconColor = Slate500,
-    unselectedTextColor = Slate500,
-    indicatorColor = AndroidCard
+    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    indicatorColor = MaterialTheme.colorScheme.surfaceVariant
 )

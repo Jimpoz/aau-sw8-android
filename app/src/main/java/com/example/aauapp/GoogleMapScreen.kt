@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.aauapp.data.remote.RouteStepDto
 import com.example.aauapp.data.remote.SpaceDisplayDto
-import com.example.aauapp.ui.theme.*
+import com.example.aauapp.ui.theme.Blue600
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
@@ -30,7 +30,7 @@ import com.google.maps.android.compose.*
 import kotlinx.coroutines.launch
 
 @Composable
-fun googleMapScreen(
+fun GoogleMapScreen(
     floorId: String,
     floorName: String = "Ground Floor",
     onChangeFloor: () -> Unit,
@@ -88,7 +88,6 @@ fun googleMapScreen(
             spaces = uiState.spaces,
             selectedSpaceId = uiState.selectedSpaceId,
             routeSteps = uiState.routeSteps,
-            onSpaceClick = { viewModel.selectSpace(it) },
             modifier = Modifier.fillMaxSize()
         )
 
@@ -182,7 +181,6 @@ fun googleMapScreen(
             selectedSpace = selectedSpace,
             routeSteps = uiState.routeSteps,
             hasRoute = uiState.routeSteps.isNotEmpty(),
-            onClose = { searchText = "" },
             onNavigate = { viewModel.computeRouteToSelected() },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -205,7 +203,6 @@ private fun LocalFloorOverlay(
     spaces: List<SpaceDisplayDto>,
     selectedSpaceId: String?,
     routeSteps: List<RouteStepDto>,
-    onSpaceClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val drawableSpaces = spaces.filter {
@@ -271,17 +268,12 @@ private fun LocalFloorOverlay(
                 floorFillColor(space)
             }
 
-            drawPath(
-                path = path,
-                color = fillColor
-            )
+            drawPath(path = path, color = fillColor)
 
             drawPath(
                 path = path,
                 color = Color(0xFF1F2937),
-                style = Stroke(
-                    width = if (space.id == selectedSpaceId) 5f else 3f
-                )
+                style = Stroke(width = if (space.id == selectedSpaceId) 5f else 3f)
             )
         }
 
@@ -338,7 +330,9 @@ private fun SearchOverlay(
                 .fillMaxWidth()
                 .height(66.dp),
             shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = AndroidCard.copy(alpha = 0.96f)),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+            ),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
             Row(
@@ -350,7 +344,7 @@ private fun SearchOverlay(
                 Icon(
                     imageVector = Icons.Default.Search,
                     contentDescription = null,
-                    tint = Slate500,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(30.dp)
                 )
 
@@ -360,7 +354,7 @@ private fun SearchOverlay(
                     placeholder = {
                         Text(
                             "Search destinations...",
-                            color = Slate400,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.titleLarge
                         )
                     },
@@ -371,6 +365,8 @@ private fun SearchOverlay(
                         unfocusedContainerColor = Color.Transparent,
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent,
+                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
                         cursorColor = Blue600
                     )
                 )
@@ -380,12 +376,12 @@ private fun SearchOverlay(
                     modifier = Modifier
                         .size(48.dp)
                         .clip(RoundedCornerShape(14.dp))
-                        .background(Color(0xFFEAF3FF))
+                        .background(MaterialTheme.colorScheme.primaryContainer)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Navigation,
                         contentDescription = null,
-                        tint = Color(0xFF007AFF),
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(28.dp)
                     )
                 }
@@ -397,7 +393,9 @@ private fun SearchOverlay(
 
             Card(
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = AndroidCard),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -413,12 +411,12 @@ private fun SearchOverlay(
                             ) {
                                 Text(
                                     text = space.display_name ?: space.short_name ?: space.id,
-                                    color = Slate900
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
 
                                 Text(
                                     text = space.space_type ?: "Space",
-                                    color = Slate500,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             }
@@ -437,8 +435,8 @@ private fun LocationPill(modifier: Modifier = Modifier) {
         modifier = modifier,
         shape = RoundedCornerShape(999.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = AndroidCard,
-            contentColor = Slate900
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface
         ),
         elevation = ButtonDefaults.buttonElevation(defaultElevation = 5.dp),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
@@ -446,7 +444,7 @@ private fun LocationPill(modifier: Modifier = Modifier) {
         Icon(
             imageVector = Icons.Default.MyLocation,
             contentDescription = null,
-            tint = Color(0xFF007AFF),
+            tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(18.dp)
         )
 
@@ -478,7 +476,9 @@ private fun RightControls(
 
         Card(
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = AndroidCard),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
             elevation = CardDefaults.cardElevation(defaultElevation = 7.dp)
         ) {
             Column {
@@ -486,16 +486,24 @@ private fun RightControls(
                     onClick = onZoomIn,
                     modifier = Modifier.size(52.dp)
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.Black)
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
                 }
 
-                HorizontalDivider(color = Color(0xFFE0E0E0))
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
 
                 IconButton(
                     onClick = onZoomOut,
                     modifier = Modifier.size(52.dp)
                 ) {
-                    Icon(Icons.Default.Remove, contentDescription = null, tint = Color.Black)
+                    Icon(
+                        Icons.Default.Remove,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
                 }
             }
         }
@@ -529,14 +537,20 @@ private fun WhiteFloatingIcon(
 ) {
     Card(
         shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = AndroidCard),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 7.dp)
     ) {
         IconButton(
             onClick = onClick,
             modifier = Modifier.size(58.dp)
         ) {
-            Icon(icon, contentDescription = null, tint = Color.Black)
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }
@@ -546,7 +560,6 @@ private fun BottomRouteCard(
     selectedSpace: SpaceDisplayDto?,
     routeSteps: List<RouteStepDto>,
     hasRoute: Boolean,
-    onClose: () -> Unit,
     onNavigate: () -> Unit,
     modifier: Modifier = Modifier
 ) {
