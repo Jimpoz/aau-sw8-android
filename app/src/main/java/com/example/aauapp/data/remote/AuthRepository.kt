@@ -16,14 +16,21 @@ class AuthRepository(
 
     suspend fun me(): AuthMeDto = api.me()
 
-    suspend fun setupMfaEmail(): MfaEmailSetupResponseDto = api.setupMfaEmail()
+    suspend fun setupMfa(): MfaSetupResponseDto {
+        return ApiModule.backendApi.setupMfa()
+    }
 
-    suspend fun confirmMfaEmail(challengeToken: String, code: String): MfaStateResponseDto =
-        api.confirmMfaEmail(MfaEmailConfirmRequestDto(challengeToken, code))
+    suspend fun confirmMfa(code: String): MfaStateResponseDto {
+        return ApiModule.backendApi.confirmMfa(
+            MfaConfirmRequestDto(code = code)
+        )
+    }
 
-    suspend fun disableMfa(password: String): MfaStateResponseDto =
-        api.disableMfa(MfaDisableRequestDto(password))
-
+    suspend fun disableMfa(password: String): MfaStateResponseDto {
+        return ApiModule.backendApi.disableMfa(
+            MfaDisableRequestDto(password = password)
+        )
+    }
     suspend fun changePassword(currentPassword: String, newPassword: String) {
         api.changePassword(PasswordChangeRequestDto(currentPassword, newPassword))
     }

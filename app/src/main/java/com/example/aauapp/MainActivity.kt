@@ -34,9 +34,20 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val sessionState by userSessionViewModel.uiState.collectAsState()
+            val isDarkMode by themeViewModel.isDarkModeState.collectAsState()
 
-            AAUAppTheme(darkTheme = themeViewModel.isDarkMode) {
+            AAUAppTheme(darkTheme = isDarkMode) {
                 when {
+                    sessionState.isLoggedIn -> {
+                        MainScreen(
+                            isDarkMode = isDarkMode,
+                            onDarkModeChange = { checked ->
+                                themeViewModel.setDarkMode(checked)
+                            },
+                            userSessionViewModel = userSessionViewModel
+                        )
+                    }
+
                     sessionState.isLoading -> {
                         Box(
                             modifier = Modifier.fillMaxSize(),
@@ -44,14 +55,6 @@ class MainActivity : ComponentActivity() {
                         ) {
                             CircularProgressIndicator()
                         }
-                    }
-
-                    sessionState.isLoggedIn -> {
-                        MainScreen(
-                            isDarkMode = themeViewModel.isDarkMode,
-                            onDarkModeChange = { themeViewModel.setDarkMode(it) },
-                            userSessionViewModel = userSessionViewModel
-                        )
                     }
 
                     else -> {

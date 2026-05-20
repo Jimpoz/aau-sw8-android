@@ -10,6 +10,15 @@ import retrofit2.converter.scalars.ScalarsConverterFactory
 
 object ApiModule {
 
+    private val ngrokInterceptor = Interceptor { chain ->
+        val request = chain.request()
+            .newBuilder()
+            .addHeader("ngrok-skip-browser-warning", "true")
+            .build()
+
+        chain.proceed(request)
+    }
+
     private val authInterceptor = Interceptor { chain ->
         val builder = chain.request()
             .newBuilder()
@@ -23,10 +32,13 @@ object ApiModule {
     }
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.BASIC
+        level = HttpLoggingInterceptor.Level.BODY
     }
 
     private val okHttpClient = OkHttpClient.Builder()
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .addInterceptor(ngrokInterceptor)
         .addInterceptor(authInterceptor)
         .addInterceptor(loggingInterceptor)
         .build()

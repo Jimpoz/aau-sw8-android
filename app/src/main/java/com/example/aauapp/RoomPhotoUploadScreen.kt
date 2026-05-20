@@ -1,400 +1,436 @@
 package com.example.aauapp
 
-import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts.GetContent
-import androidx.activity.result.contract.ActivityResultContracts.TakePicture
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
-import androidx.lifecycle.viewmodel.compose.viewModel
-import java.io.File
+import com.example.aauapp.data.remote.ApiModule
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 
-private enum class CompassDirection(val label: String) {
-    North("North"),
-    East("East"),
-    South("South"),
-    West("West")
-}
-
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun RoomPhotoUploadScreen(
-    viewModel: RoomPhotoUploadViewModel = viewModel(),
-    onBack: () -> Unit = {}
+    onBack: () -> Unit
 ) {
-    val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
-    var dialogDirection by remember { mutableStateOf<CompassDirection?>(null) }
-    var pendingCameraDirection by remember { mutableStateOf<CompassDirection?>(null) }
-    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+    var isLoadingRooms by remember { mutableStateOf(true) }
+    var isUploading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
 
-    val northGalleryPicker = rememberImagePicker { viewModel.setNorthImage(it) }
-    val eastGalleryPicker = rememberImagePicker { viewModel.setEastImage(it) }
-    val southGalleryPicker = rememberImagePicker { viewModel.setSouthImage(it) }
-    val westGalleryPicker = rememberImagePicker { viewModel.setWestImage(it) }
+    var rooms by remember { mutableStateOf<List<String>>(emptyList()) }
+    var manualRoom by remember { mutableStateOf(false) }
+    var roomName by remember { mutableStateOf("") }
 
-    val cameraLauncher = rememberLauncherForActivityResult(TakePicture()) { success ->
-        if (success) {
-            when (pendingCameraDirection) {
-                CompassDirection.North -> viewModel.setNorthImage(pendingCameraUri)
-                CompassDirection.East -> viewModel.setEastImage(pendingCameraUri)
-                CompassDirection.South -> viewModel.setSouthImage(pendingCameraUri)
-                CompassDirection.West -> viewModel.setWestImage(pendingCameraUri)
-                null -> Unit
+    var selectedDirection by remember { mutableStateOf("") }
+
+    var northUri by remember { mutableStateOf<Uri?>(null) }
+    var eastUri by remember { mutableStateOf<Uri?>(null) }
+    var southUri by remember { mutableStateOf<Uri?>(null) }
+    var westUri by remember { mutableStateOf<Uri?>(null) }
+
+    val picker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            when (selectedDirection) {
+                "North" -> northUri = uri
+                "East" -> eastUri = uri
+                "South" -> southUri = uri
+                "West" -> westUri = uri
             }
         }
-        pendingCameraDirection = null
-        pendingCameraUri = null
     }
 
-    fun launchGallery(direction: CompassDirection) {
-        when (direction) {
-            CompassDirection.North -> northGalleryPicker.launch("image/*")
-            CompassDirection.East -> eastGalleryPicker.launch("image/*")
-            CompassDirection.South -> southGalleryPicker.launch("image/*")
-            CompassDirection.West -> westGalleryPicker.launch("image/*")
+    LaunchedEffect(Unit) {
+        try {
+            rooms = ApiModule.backendApi.getRoomSummaryRooms().names
+            roomName = rooms.firstOrNull().orEmpty()
+        } catch (e: Exception) {
+            error = e.message ?: "Failed to load rooms"
+        } finally {
+            isLoadingRooms = false
         }
     }
 
-    fun launchCamera(direction: CompassDirection) {
-        val uri = createTempImageUri(context)
-        pendingCameraDirection = direction
-        pendingCameraUri = uri
-        cameraLauncher.launch(uri)
-    }
+    val canUpload =
+        roomName.isNotBlank() &&
+                northUri != null &&
+                eastUri != null &&
+                southUri != null &&
+                westUri != null &&
+                !isUploading
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .statusBarsPadding()
+            .background(Color(0xFFF5F6FA))
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .padding(horizontal = 17.dp)
     ) {
-        Text(
-            text = "Upload Room Photos",
-            style = MaterialTheme.typography.headlineSmall
-        )
+        Spacer(Modifier.height(58.dp))
 
-        Button(
-            onClick = onBack,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Back")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onBack) {
+                Text("Close", style = MaterialTheme.typography.titleLarge)
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            Text(
+                text = "Upload Room Photos",
+                style = MaterialTheme.typography.headlineSmall,
+                color = Color.Black
+            )
+
+            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.width(68.dp))
         }
 
-        InfoCard(
-            title = "How it works",
-            body = "Stand near the center of the room and add four photos: North, East, South, and West. Then upload them for analysis."
-        )
+        Spacer(Modifier.height(34.dp))
 
-        if (uiState.isLoading) {
-            CircularProgressIndicator()
+        UploadCard {
+            Text(
+                text = "How it works",
+                style = MaterialTheme.typography.titleLarge,
+                color = Color(0xFF334155)
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                text = "Stand in the center of the room and take four photos, one per compass direction. Upload them clockwise: North → East → South → West. The server runs object detection on all four and stores the result on the room.",
+                style = MaterialTheme.typography.titleMedium,
+                color = Color(0xFF526071)
+            )
         }
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "Room",
-                    style = MaterialTheme.typography.titleMedium
+        Spacer(Modifier.height(24.dp))
+
+        UploadCard {
+            Text(
+                text = "Room",
+                style = MaterialTheme.typography.titleLarge,
+                color = Color(0xFF334155)
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            if (isLoadingRooms) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(26.dp),
+                        strokeWidth = 3.dp,
+                        color = Color(0xFF8AB4FF)
+                    )
+
+                    Spacer(Modifier.width(8.dp))
+
+                    Text(
+                        text = "Loading rooms...",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color(0xFF6B778C)
+                    )
+                }
+            } else if (!manualRoom && rooms.isNotEmpty()) {
+                RoomDropdown(
+                    rooms = rooms,
+                    selected = roomName,
+                    onSelected = { roomName = it }
                 )
+            }
+
+            if (manualRoom || rooms.isEmpty()) {
+                Spacer(Modifier.height(12.dp))
 
                 OutlinedTextField(
-                    value = uiState.selectedRoomName,
-                    onValueChange = { viewModel.setRoomName(it) },
-                    label = { Text("Room name") },
-                    modifier = Modifier.fillMaxWidth()
+                    value = roomName,
+                    onValueChange = { roomName = it },
+                    placeholder = { Text("Room name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp)
                 )
-
-                if (uiState.rooms.isNotEmpty()) {
-                    Text(
-                        text = "Known rooms: " + uiState.rooms.joinToString { it.room_name },
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
             }
-        }
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+            Spacer(Modifier.height(18.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "Photos",
-                    style = MaterialTheme.typography.titleMedium
+                    text = "Type a room name manually",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color(0xFF526071),
+                    modifier = Modifier.weight(1f)
                 )
 
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    maxItemsInEachRow = 2
-                ) {
-                    DirectionTile(
-                        title = "North",
-                        uri = uiState.northImage,
-                        onClick = { dialogDirection = CompassDirection.North }
-                    )
-                    DirectionTile(
-                        title = "East",
-                        uri = uiState.eastImage,
-                        onClick = { dialogDirection = CompassDirection.East }
-                    )
-                    DirectionTile(
-                        title = "South",
-                        uri = uiState.southImage,
-                        onClick = { dialogDirection = CompassDirection.South }
-                    )
-                    DirectionTile(
-                        title = "West",
-                        uri = uiState.westImage,
-                        onClick = { dialogDirection = CompassDirection.West }
-                    )
-                }
+                Switch(
+                    checked = manualRoom,
+                    onCheckedChange = {
+                        manualRoom = it
+                        if (!it && rooms.isNotEmpty()) {
+                            roomName = rooms.first()
+                        } else {
+                            roomName = ""
+                        }
+                    }
+                )
             }
         }
+
+        Spacer(Modifier.height(24.dp))
+
+        UploadCard {
+            Text(
+                text = "Photos",
+                style = MaterialTheme.typography.titleLarge,
+                color = Color(0xFF334155)
+            )
+
+            Spacer(Modifier.height(18.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                PhotoPickerBox(
+                    label = "North",
+                    uri = northUri,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        selectedDirection = "North"
+                        picker.launch("image/*")
+                    }
+                )
+
+                PhotoPickerBox(
+                    label = "East",
+                    uri = eastUri,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        selectedDirection = "East"
+                        picker.launch("image/*")
+                    }
+                )
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                PhotoPickerBox(
+                    label = "South",
+                    uri = southUri,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        selectedDirection = "South"
+                        picker.launch("image/*")
+                    }
+                )
+
+                PhotoPickerBox(
+                    label = "West",
+                    uri = westUri,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        selectedDirection = "West"
+                        picker.launch("image/*")
+                    }
+                )
+            }
+        }
+
+        error?.let {
+            Spacer(Modifier.height(16.dp))
+            MessageCard(text = it, isError = true)
+        }
+
+        message?.let {
+            Spacer(Modifier.height(16.dp))
+            MessageCard(text = it, isError = false)
+        }
+
+        Spacer(Modifier.height(28.dp))
 
         Button(
-            onClick = { viewModel.upload(context.contentResolver) },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !uiState.isUploading
-        ) {
-            Text(if (uiState.isUploading) "Uploading..." else "Upload & Analyze")
-        }
+            onClick = {
+                val n = northUri
+                val e = eastUri
+                val s = southUri
+                val w = westUri
 
-        uiState.successMessage?.let {
-            ResultCard(title = "Upload Result") {
+                if (n == null || e == null || s == null || w == null) return@Button
+
+                scope.launch {
+                    isUploading = true
+                    error = null
+                    message = null
+
+                    try {
+                        val response = withContext(Dispatchers.IO) {
+                            ApiModule.backendApi.uploadRoomPhotos(
+                                roomName = roomName.toRequestBody("text/plain".toMediaTypeOrNull()),
+                                north_image = context.uriToPart("north_image", n, "north.jpg"),
+                                east_image = context.uriToPart("east_image", e, "east.jpg"),
+                                south_image = context.uriToPart("south_image", s, "south.jpg"),
+                                west_image = context.uriToPart("west_image", w, "west.jpg")
+                            )
+                        }
+
+                        message = "Uploaded ${response.stored_image_count} photos for ${response.room_name}"
+                    } catch (ex: Exception) {
+                        error = ex.message ?: "Upload failed"
+                    } finally {
+                        isUploading = false
+                    }
+                }
+            },
+            enabled = canUpload,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(62.dp),
+            shape = RoundedCornerShape(22.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF2F6FEA),
+                disabledContainerColor = Color(0xFFB8C0CE),
+                contentColor = Color.White,
+                disabledContentColor = Color.White
+            )
+        ) {
+            if (isUploading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(22.dp),
+                    color = Color.White,
+                    strokeWidth = 2.dp
+                )
+            } else {
                 Text(
-                    text = it,
-                    color = MaterialTheme.colorScheme.primary
+                    text = "Upload & Analyze",
+                    style = MaterialTheme.typography.titleLarge
                 )
             }
         }
 
-        if (uiState.roomObjects.isNotEmpty()) {
-            ResultCard(title = "Detected Objects") {
-                uiState.roomObjects.forEach { (name, count) ->
-                    Text("$name ($count)")
-                }
-            }
-        }
-
-        if (uiState.roomText.isNotEmpty()) {
-            ResultCard(title = "Detected Text") {
-                uiState.roomText.forEach { (name, count) ->
-                    Text("$name ($count)")
-                }
-            }
-        }
-
-        if (uiState.storedViews.isNotEmpty()) {
-            ResultCard(title = "Stored Views") {
-                Text(uiState.storedViews.joinToString())
-            }
-        }
-
-        if (uiState.summaries.isNotEmpty()) {
-            ResultCard(title = "View Summaries") {
-                uiState.summaries.forEach { summary ->
-                    val direction = summary.direction ?: "Unknown"
-                    Text(
-                        text = "$direction: ${summary.summary ?: "No summary"}",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-
-                    if (summary.object_counts.isNotEmpty()) {
-                        Text(
-                            text = "Objects: " + summary.object_counts.entries.joinToString {
-                                "${it.key} (${it.value})"
-                            },
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-
-                    if (summary.text_counts.isNotEmpty()) {
-                        Text(
-                            text = "Text: " + summary.text_counts.entries.joinToString {
-                                "${it.key} (${it.value})"
-                            },
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                }
-            }
-        }
-
-        uiState.error?.let {
-            Text(
-                text = it,
-                color = MaterialTheme.colorScheme.error
-            )
-        }
+        Spacer(Modifier.height(90.dp))
     }
+}
 
-    dialogDirection?.let { direction ->
-        AlertDialog(
-            onDismissRequest = { dialogDirection = null },
-            title = { Text("Add ${direction.label} photo") },
-            text = { Text("Choose photo source") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        launchCamera(direction)
-                        dialogDirection = null
-                    }
-                ) {
-                    Text("Take Photo")
-                }
-            },
-            dismissButton = {
-                Row {
-                    TextButton(
-                        onClick = {
-                            launchGallery(direction)
-                            dialogDirection = null
-                        }
-                    ) {
-                        Text("Gallery")
-                    }
-
-                    TextButton(
-                        onClick = { dialogDirection = null }
-                    ) {
-                        Text("Cancel")
-                    }
-                }
-            }
+@Composable
+private fun UploadCard(
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(26.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            content = content
         )
     }
 }
 
 @Composable
-private fun InfoCard(
-    title: String,
-    body: String
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium
-            )
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
-    }
-}
-
-@Composable
-private fun ResultCard(
-    title: String,
-    content: @Composable () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium
-            )
-            content()
-        }
-    }
-}
-
-@Composable
-private fun DirectionTile(
-    title: String,
+private fun PhotoPickerBox(
+    label: String,
     uri: Uri?,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth(0.48f)
-            .aspectRatio(1f)
-            .clickable { onClick() },
-        shape = RoundedCornerShape(14.dp)
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .fillMaxWidth()
+                .height(118.dp)
+                .background(Color(0xFFF0F3F8), RoundedCornerShape(18.dp))
+                .clickable { onClick() },
             contentAlignment = Alignment.Center
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(12.dp)
-            ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    imageVector = Icons.Default.AddPhotoAlternate,
+                    contentDescription = null,
+                    tint = Color(0xFF66788F),
+                    modifier = Modifier.size(38.dp)
+                )
+
+                Spacer(Modifier.height(8.dp))
+
                 Text(
-                    text = title,
+                    text = if (uri == null) "Tap to add" else "Selected",
+                    color = Color(0xFF66788F),
                     style = MaterialTheme.typography.titleMedium
                 )
-                HorizontalDivider()
-                Text(
-                    text = uri?.lastPathSegment ?: "Tap to add",
-                    style = MaterialTheme.typography.bodySmall
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleLarge,
+            color = Color(0xFF334155)
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RoomDropdown(
+    rooms: List<String>,
+    selected: String,
+    onSelected: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded }
+    ) {
+        OutlinedTextField(
+            value = selected,
+            onValueChange = {},
+            readOnly = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(),
+            shape = RoundedCornerShape(18.dp),
+            trailingIcon = {
+                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+            }
+        )
+
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            rooms.forEach { room ->
+                DropdownMenuItem(
+                    text = { Text(room) },
+                    onClick = {
+                        onSelected(room)
+                        expanded = false
+                    }
                 )
             }
         }
@@ -402,20 +438,47 @@ private fun DirectionTile(
 }
 
 @Composable
-private fun rememberImagePicker(onResult: (Uri?) -> Unit) =
-    rememberLauncherForActivityResult(GetContent()) { uri ->
-        onResult(uri)
+private fun MessageCard(
+    text: String,
+    isError: Boolean
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isError) {
+                Color(0xFFFFE5E5)
+            } else {
+                Color(0xFFEAF3FF)
+            }
+        ),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(14.dp),
+            color = if (isError) {
+                Color(0xFFB00020)
+            } else {
+                Color(0xFF2563EB)
+            }
+        )
     }
+}
 
-private fun createTempImageUri(context: Context): Uri {
-    val file = File.createTempFile(
-        "room_upload_",
-        ".jpg",
-        context.cacheDir
-    )
-    return FileProvider.getUriForFile(
-        context,
-        "${context.packageName}.provider",
-        file
+private fun android.content.Context.uriToPart(
+    partName: String,
+    uri: Uri,
+    fileName: String
+): MultipartBody.Part {
+    val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        ?: error("Could not read image")
+
+    val body = bytes.toRequestBody("image/jpeg".toMediaTypeOrNull())
+
+    return MultipartBody.Part.createFormData(
+        partName,
+        fileName,
+        body
     )
 }

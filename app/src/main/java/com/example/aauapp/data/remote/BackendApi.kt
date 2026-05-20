@@ -2,17 +2,19 @@ package com.example.aauapp.data.remote
 
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
+import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.HTTP
 import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
-import retrofit2.Response
-import retrofit2.http.HTTP
 
-data class HealthResponseDto(val status: String)
+data class HealthResponseDto(
+    val status: String
+)
 
 data class AuthSignupRequest(
     val email: String,
@@ -212,20 +214,9 @@ data class MfaDisableRequestDto(
     val password: String
 )
 
-data class MfaEmailConfirmRequestDto(
-    val challenge_token: String,
-    val code: String
-)
-
 data class MfaSetupResponseDto(
     val secret: String,
     val provisioning_uri: String,
-    val recovery_codes: List<String> = emptyList()
-)
-
-data class MfaEmailSetupResponseDto(
-    val setup_challenge_token: String,
-    val challenge_expires_at: String,
     val recovery_codes: List<String> = emptyList()
 )
 
@@ -259,13 +250,19 @@ interface BackendApi {
     suspend fun pingBackend(): HealthResponseDto
 
     @POST("api/v1/auth/signup")
-    suspend fun signup(@Body request: AuthSignupRequest): AuthResponseDto
+    suspend fun signup(
+        @Body request: AuthSignupRequest
+    ): AuthResponseDto
 
     @POST("api/v1/auth/login")
-    suspend fun login(@Body request: AuthLoginRequest): AuthResponseDto
+    suspend fun login(
+        @Body request: AuthLoginRequest
+    ): AuthResponseDto
 
     @POST("api/v1/auth/login/mfa")
-    suspend fun loginMfa(@Body request: AuthMfaLoginRequest): AuthResponseDto
+    suspend fun loginMfa(
+        @Body request: AuthMfaLoginRequest
+    ): AuthResponseDto
 
     @POST("api/v1/auth/guest")
     suspend fun guest(): AuthResponseDto
@@ -278,23 +275,61 @@ interface BackendApi {
         @Body request: DeleteAccountRequestDto
     ): Response<Unit>
 
+    @POST("api/v1/auth/mfa/setup")
+    suspend fun setupMfa(): MfaSetupResponseDto
+
+    @POST("api/v1/auth/mfa/confirm")
+    suspend fun confirmMfa(
+        @Body request: MfaConfirmRequestDto
+    ): MfaStateResponseDto
+
+    @POST("api/v1/auth/mfa/disable")
+    suspend fun disableMfa(
+        @Body request: MfaDisableRequestDto
+    ): MfaStateResponseDto
+
+    @POST("api/v1/auth/password/change")
+    suspend fun changePassword(
+        @Body request: PasswordChangeRequestDto
+    ): Response<Unit>
+
+    @POST("api/v1/auth/password/forgot")
+    suspend fun forgotPassword(
+        @Body request: PasswordForgotRequestDto
+    ): Response<Unit>
+
+    @POST("api/v1/auth/password/reset")
+    suspend fun resetPassword(
+        @Body request: PasswordResetRequestDto
+    ): Response<Unit>
+
     @GET("api/v1/mobile/campuses")
     suspend fun getCampuses(): List<CampusDto>
 
     @GET("api/v1/mobile/campuses/{campusId}/map/light")
-    suspend fun getCampusMapLight(@Path("campusId") campusId: String): CampusMapLightDto
+    suspend fun getCampusMapLight(
+        @Path("campusId") campusId: String
+    ): CampusMapLightDto
 
     @GET("api/v1/campuses/{campusId}/export")
-    suspend fun exportCampus(@Path("campusId") campusId: String): CampusMapLightDto
+    suspend fun exportCampus(
+        @Path("campusId") campusId: String
+    ): CampusMapLightDto
 
     @GET("api/v1/buildings/{buildingId}/floors")
-    suspend fun getBuildingFloors(@Path("buildingId") buildingId: String): List<FloorMapDto>
+    suspend fun getBuildingFloors(
+        @Path("buildingId") buildingId: String
+    ): List<FloorMapDto>
 
     @GET("api/v1/floors/{floorId}")
-    suspend fun getFloor(@Path("floorId") floorId: String): FloorDto
+    suspend fun getFloor(
+        @Path("floorId") floorId: String
+    ): FloorDto
 
     @GET("api/v1/floors/{floorId}/display")
-    suspend fun getFloorDisplay(@Path("floorId") floorId: String): List<SpaceDisplayDto>
+    suspend fun getFloorDisplay(
+        @Path("floorId") floorId: String
+    ): List<SpaceDisplayDto>
 
     @GET("api/v1/navigate")
     suspend fun navigate(
@@ -304,7 +339,9 @@ interface BackendApi {
     ): NavigationResultDto
 
     @POST("api/v1/assistant/chat")
-    suspend fun chatWithAssistant(@Body request: AssistantChatRequest): AssistantChatResponse
+    suspend fun chatWithAssistant(
+        @Body request: AssistantChatRequest
+    ): AssistantChatResponse
 
     @GET("api/v1/room-summary/rooms")
     suspend fun getRoomSummaryRooms(): RoomNamesResponseDto
@@ -318,32 +355,4 @@ interface BackendApi {
         @Part south_image: MultipartBody.Part,
         @Part west_image: MultipartBody.Part
     ): RoomObjectSetupResponseDto
-
-    @POST("api/v1/auth/mfa/email/setup")
-    suspend fun setupMfaEmail(): MfaEmailSetupResponseDto
-
-    @POST("api/v1/auth/mfa/email/confirm")
-    suspend fun confirmMfaEmail(
-        @Body request: MfaEmailConfirmRequestDto
-    ): MfaStateResponseDto
-
-    @POST("api/v1/auth/mfa/disable")
-    suspend fun disableMfa(
-        @Body request: MfaDisableRequestDto
-    ): MfaStateResponseDto
-
-    @POST("api/v1/auth/password/change")
-    suspend fun changePassword(
-        @Body request: PasswordChangeRequestDto
-    ): retrofit2.Response<Unit>
-
-    @POST("api/v1/auth/password/forgot")
-    suspend fun forgotPassword(
-        @Body request: PasswordForgotRequestDto
-    ): retrofit2.Response<Unit>
-
-    @POST("api/v1/auth/password/reset")
-    suspend fun resetPassword(
-        @Body request: PasswordResetRequestDto
-    ): retrofit2.Response<Unit>
 }

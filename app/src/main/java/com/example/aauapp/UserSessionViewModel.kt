@@ -35,6 +35,8 @@ class UserSessionViewModel(
         viewModelScope.launch {
             store.profileFlow.collect { profile ->
                 AuthTokenStore.token = profile.authToken
+                NavigationPreferenceMemory.wheelchairOnly = profile.wheelchairOnly
+
                 _uiState.value = UserSessionUiState(
                     isLoading = false,
                     profile = profile
@@ -56,7 +58,9 @@ class UserSessionViewModel(
                 val response = repository.login(
                     email = email.trim(),
                     password = password,
-                    organizationId = organizationId?.ifBlank { null }
+                    organizationId = organizationId
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
                 )
 
                 if (response.mfa_required) {
@@ -72,12 +76,18 @@ class UserSessionViewModel(
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = e.message ?: "Login failed"
+                    error = when {
+                        e.message?.contains("401") == true ->
+                            "Invalid email or password"
+                        e.message?.contains("404") == true ->
+                            "Organization not found. Leave Organization ID empty or use the correct one."
+                        else ->
+                            e.message ?: "Login failed"
+                    }
                 )
             }
         }
     }
-
     fun completeMfaLogin(code: String) {
         val challenge = _uiState.value.mfaChallengeToken
 
@@ -130,15 +140,24 @@ class UserSessionViewModel(
                 val response = repository.signup(
                     email = email.trim(),
                     password = password,
-                    fullName = fullName?.ifBlank { null },
-                    organizationId = organizationId?.ifBlank { null }
+                    fullName = fullName?.trim()?.takeIf { it.isNotBlank() },
+                    organizationId = organizationId
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
                 )
 
                 saveAuthResponse(response)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = e.message ?: "Signup failed"
+                    error = when {
+                        e.message?.contains("404") == true ->
+                            "Organization not found. Leave Organization ID empty or use the correct one."
+                        e.message?.contains("409") == true ->
+                            "Account already exists. Try signing in."
+                        else ->
+                            e.message ?: "Signup failed"
+                    }
                 )
             }
         }
@@ -174,7 +193,9 @@ class UserSessionViewModel(
 
         val user = response.user
 
-        val profile = _uiState.value.profile.copy(
+        val previous = _uiState.value.profile
+
+        val profile = previous.copy(
             id = user?.id.orEmpty(),
             email = user?.email.orEmpty(),
             displayName = user?.full_name ?: user?.email?.substringBefore("@").orEmpty(),
@@ -183,6 +204,8 @@ class UserSessionViewModel(
             role = response.role,
             authToken = token
         )
+
+        NavigationPreferenceMemory.wheelchairOnly = profile.wheelchairOnly
 
         store.saveProfile(profile)
 
@@ -195,47 +218,42 @@ class UserSessionViewModel(
         )
     }
 
-    fun enableEmailMfa(
-        onChallengeReady: (String, List<String>) -> Unit
+    fun enableMfa(
+        onSetupReady: (String, String, List<String>) -> Unit
     ) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null, message = null)
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
             try {
-                val result = repository.setupMfaEmail()
+                val result = repository.setupMfa()
 
                 _uiState.value = _uiState.value.copy(isLoading = false)
 
-                onChallengeReady(
-                    result.setup_challenge_token,
+                onSetupReady(
+                    result.secret,
+                    result.provisioning_uri,
                     result.recovery_codes
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = e.message ?: "Could not start two-factor setup"
+                    error = e.message ?: "Could not start MFA setup"
                 )
             }
         }
     }
 
-    fun confirmEmailMfa(
-        challengeToken: String,
-        code: String
-    ) {
-        if (challengeToken.isBlank() || code.isBlank()) {
+    fun confirmMfa(code: String) {
+        if (code.isBlank()) {
             _uiState.value = _uiState.value.copy(error = "Enter the verification code")
             return
         }
 
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null, message = null)
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
             try {
-                val result = repository.confirmMfaEmail(
-                    challengeToken = challengeToken,
-                    code = code.trim()
-                )
+                val result = repository.confirmMfa(code.trim())
 
                 val profile = _uiState.value.profile.copy(
                     mfaEnabled = result.mfa_enabled,
@@ -246,7 +264,7 @@ class UserSessionViewModel(
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = e.message ?: "Could not confirm two-factor authentication"
+                    error = e.message ?: "Could not confirm MFA"
                 )
             }
         }
@@ -402,15 +420,19 @@ class UserSessionViewModel(
     fun updateNavigationPreferences(
         avoidStairs: Boolean,
         voiceEnabled: Boolean,
-        elevatorsOnly: Boolean
+        elevatorsOnly: Boolean,
+        wheelchairOnly: Boolean
     ) {
-        persist(
-            _uiState.value.profile.copy(
-                avoidStairs = avoidStairs,
-                voiceEnabled = voiceEnabled,
-                elevatorsOnly = elevatorsOnly
-            )
+        val profile = _uiState.value.profile.copy(
+            avoidStairs = avoidStairs,
+            voiceEnabled = voiceEnabled,
+            elevatorsOnly = elevatorsOnly,
+            wheelchairOnly = wheelchairOnly
         )
+
+        NavigationPreferenceMemory.wheelchairOnly = wheelchairOnly
+
+        persist(profile)
     }
 
     fun deleteProfile(password: String) {
@@ -430,6 +452,7 @@ class UserSessionViewModel(
                 repository.deleteAccount(password)
 
                 AuthTokenStore.token = null
+                NavigationPreferenceMemory.wheelchairOnly = false
                 store.clearProfile()
 
                 _uiState.value = UserSessionUiState(
@@ -447,6 +470,7 @@ class UserSessionViewModel(
 
     fun logout() {
         AuthTokenStore.token = null
+        NavigationPreferenceMemory.wheelchairOnly = false
 
         viewModelScope.launch {
             store.clearProfile()
@@ -459,6 +483,8 @@ class UserSessionViewModel(
         profile: UserProfileUi,
         message: String? = null
     ) {
+        NavigationPreferenceMemory.wheelchairOnly = profile.wheelchairOnly
+
         _uiState.value = _uiState.value.copy(
             isLoading = false,
             profile = profile,
