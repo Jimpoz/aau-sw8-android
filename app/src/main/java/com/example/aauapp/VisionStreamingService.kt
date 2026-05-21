@@ -5,6 +5,8 @@ import android.graphics.ImageFormat
 import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.YuvImage
+import android.os.Handler
+import android.os.Looper
 import androidx.camera.core.ImageProxy
 import com.example.aauapp.data.remote.AuthTokenStore
 import com.google.gson.Gson
@@ -22,14 +24,22 @@ data class RemoteDetection(
     val x: Float = 0f,
     val y: Float = 0f,
     val width: Float = 0f,
-    val height: Float = 0f
+    val height: Float = 0f,
+    val is_landmark_match: Boolean? = null,
+    val landmark_name: String? = null
 )
 
 data class RemoteLocation(
     val kind: String = "",
     val id: String = "",
     val name: String = "",
-    val confidence: Double = 0.0
+    val confidence: Double = 0.0,
+    val space_id: String? = null,
+    val building_id: String? = null,
+    val building_name: String? = null,
+    val campus_id: String? = null,
+    val floor_id: String? = null,
+    val floor_index: Int? = null
 )
 
 data class VisionStreamFrame(
@@ -45,6 +55,13 @@ class VisionStreamingService(
     private val gson = Gson()
     private var webSocket: WebSocket? = null
     private var lastFrameSentAt = 0L
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    @Volatile private var pendingCapture: ((ByteArray?) -> Unit)? = null
+
+    fun captureNextFrame(completion: (ByteArray?) -> Unit) {
+        pendingCapture = completion
+    }
 
     fun connect(
         baseUrl: String,
@@ -108,6 +125,14 @@ class VisionStreamingService(
     }
 
     fun sendFrame(imageProxy: ImageProxy) {
+        val capture = pendingCapture
+        if (capture != null) {
+            pendingCapture = null
+            val captured = imageProxyToJpeg(imageProxy)
+            mainHandler.post { capture(captured) }
+            return
+        }
+
         val now = System.currentTimeMillis()
 
         // Same idea as iOS: limit frame rate so backend is not overloaded.

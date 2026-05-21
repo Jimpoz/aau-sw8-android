@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MeetingRoom
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Room
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,7 +39,8 @@ private enum class ExploreLevel {
 
 @Composable
 fun ExploreScreen(
-    viewModel: ExploreViewModel = viewModel()
+    viewModel: ExploreViewModel = viewModel(),
+    onOpenInMap: (floorId: String?, spaceId: String?) -> Unit = { _, _ -> }
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -93,9 +95,13 @@ fun ExploreScreen(
                 }
 
                 ExploreLevel.BUILDINGS -> {
-                    Header(
-                        title = "Explore",
-                        subtitle = uiState.selectedCampus?.name
+                    BuildingsHeader(
+                        subtitle = uiState.selectedCampus?.organization_name
+                            ?: uiState.selectedCampus?.name,
+                        onSwitch = {
+                            selectedFilter = "All"
+                            level = ExploreLevel.CAMPUSES
+                        }
                     )
                 }
 
@@ -192,6 +198,9 @@ fun ExploreScreen(
                             onClick = {
                                 viewModel.selectBuilding(building)
                                 level = ExploreLevel.FLOORS
+                            },
+                            onOpenInMap = {
+                                onOpenInMap(buildingDefaultFloorId(building), null)
                             }
                         )
                     }
@@ -221,6 +230,9 @@ fun ExploreScreen(
                                 viewModel.selectFloor(floor)
                                 selectedFilter = "All"
                                 level = ExploreLevel.ROOMS
+                            },
+                            onOpenInMap = {
+                                onOpenInMap(floor.id, null)
                             }
                         )
                     }
@@ -298,7 +310,12 @@ fun ExploreScreen(
 
                     items(filteredRooms) { room ->
 
-                        RoomCard(room)
+                        RoomCard(
+                            room = room,
+                            onOpenInMap = {
+                                onOpenInMap(uiState.selectedFloor?.id, room.id)
+                            }
+                        )
                     }
                 }
             }
@@ -412,7 +429,8 @@ private fun CampusCard(
 @Composable
 private fun BuildingCard(
     building: BuildingMapDto,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onOpenInMap: () -> Unit
 ) {
 
     ExploreCard(onClick = onClick) {
@@ -438,14 +456,15 @@ private fun BuildingCard(
             )
         }
 
-        NavigationButton()
+        NavigationButton(onClick = onOpenInMap)
     }
 }
 
 @Composable
 private fun FloorCard(
     floor: FloorMapDto,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onOpenInMap: () -> Unit
 ) {
 
     ExploreCard(onClick = onClick) {
@@ -461,13 +480,14 @@ private fun FloorCard(
             color = MaterialTheme.colorScheme.onSurface
         )
 
-        NavigationButton()
+        NavigationButton(onClick = onOpenInMap)
     }
 }
 
 @Composable
 private fun RoomCard(
-    room: SpaceDisplayDto
+    room: SpaceDisplayDto,
+    onOpenInMap: () -> Unit
 ) {
 
     val icon = if (
@@ -519,27 +539,78 @@ private fun RoomCard(
             )
         }
 
-        NavigationButton()
+        NavigationButton(onClick = onOpenInMap)
     }
 }
 
 @Composable
-private fun NavigationButton() {
+private fun NavigationButton(onClick: () -> Unit) {
 
     Surface(
+        onClick = onClick,
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.primaryContainer
     ) {
 
         Icon(
             imageVector = Icons.Default.Navigation,
-            contentDescription = null,
+            contentDescription = "Open in map",
             tint = Blue600,
             modifier = Modifier
                 .padding(12.dp)
                 .size(22.dp)
         )
     }
+}
+
+@Composable
+private fun BuildingsHeader(
+    subtitle: String?,
+    onSwitch: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Explore",
+                style = MaterialTheme.typography.headlineLarge,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            subtitle?.let {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = it,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+
+        Button(
+            onClick = onSwitch,
+            shape = CircleShape,
+            colors = ButtonDefaults.buttonColors(containerColor = Blue600),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.SwapHoriz,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Switch", style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+private fun buildingDefaultFloorId(building: BuildingMapDto): String? {
+    val floors = building.floors
+    if (floors.isEmpty()) return null
+    return (floors.filter { (it.floor_index ?: 0) >= 0 }
+        .minByOrNull { it.floor_index ?: Int.MAX_VALUE }
+        ?: floors.minByOrNull { it.floor_index ?: Int.MAX_VALUE })?.id
 }
 
 @Composable

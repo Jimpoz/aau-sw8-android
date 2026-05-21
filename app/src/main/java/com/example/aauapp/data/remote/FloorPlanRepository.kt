@@ -5,6 +5,10 @@ class FloorPlanRepository(
 ) {
     suspend fun getFloor(floorId: String): FloorDto = api.getFloor(floorId)
 
+    suspend fun getBuildingFloors(buildingId: String): List<FloorMapDto> {
+        return api.getBuildingFloors(buildingId)
+    }
+
     suspend fun getFloorDisplay(floorId: String): List<SpaceDisplayDto> {
         return api.getFloorDisplay(floorId)
     }

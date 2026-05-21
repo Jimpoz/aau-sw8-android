@@ -99,6 +99,8 @@ dependencies {
 
     implementation("com.google.code.gson:gson:2.10.1")
 
+    implementation("com.google.zxing:core:3.5.3")
+
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
@@ -152,8 +154,8 @@ dependencies {
 
     implementation("com.google.android.gms:play-services-location:21.3.0")
 
-    implementation("com.google.android.gms:play-services-maps:19.0.0")
-    implementation("com.google.maps.android:maps-compose:6.4.1")
+    // Free, key-less OpenStreetMap tiles + overlays (replaces Google Maps).
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
 
 
 

@@ -218,22 +218,13 @@ class UserSessionViewModel(
         )
     }
 
-    fun enableMfa(
-        onSetupReady: (String, String, List<String>) -> Unit
-    ) {
+    fun beginMfaTotp(onReady: (String, String, List<String>) -> Unit) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-
             try {
                 val result = repository.setupMfa()
-
                 _uiState.value = _uiState.value.copy(isLoading = false)
-
-                onSetupReady(
-                    result.secret,
-                    result.provisioning_uri,
-                    result.recovery_codes
-                )
+                onReady(result.secret, result.provisioning_uri, result.recovery_codes)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -243,24 +234,69 @@ class UserSessionViewModel(
         }
     }
 
-    fun confirmMfa(code: String) {
+    fun beginMfaEmail(onReady: (String, List<String>) -> Unit) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            try {
+                val result = repository.setupMfaEmail()
+                _uiState.value = _uiState.value.copy(isLoading = false)
+                onReady(result.setup_challenge_token, result.recovery_codes)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Could not start email MFA setup"
+                )
+            }
+        }
+    }
+
+    fun finishMfaTotp(code: String, onDone: () -> Unit) {
         if (code.isBlank()) {
             _uiState.value = _uiState.value.copy(error = "Enter the verification code")
             return
         }
-
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-
             try {
                 val result = repository.confirmMfa(code.trim())
-
-                val profile = _uiState.value.profile.copy(
-                    mfaEnabled = result.mfa_enabled,
-                    mfaMethod = result.mfa_method
+                persist(
+                    _uiState.value.profile.copy(
+                        mfaEnabled = result.mfa_enabled,
+                        mfaMethod = result.mfa_method
+                    ),
+                    message = "Two-factor authentication enabled"
                 )
+                onDone()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Could not confirm MFA"
+                )
+            }
+        }
+    }
 
-                persist(profile, message = "Two-factor authentication enabled")
+    fun finishMfaEmail(challengeToken: String, code: String, onDone: () -> Unit) {
+        if (challengeToken.isBlank()) {
+            _uiState.value = _uiState.value.copy(error = "Setup expired — reopen and try again")
+            return
+        }
+        if (code.isBlank()) {
+            _uiState.value = _uiState.value.copy(error = "Enter the verification code")
+            return
+        }
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            try {
+                val result = repository.confirmMfaEmail(challengeToken, code.trim())
+                persist(
+                    _uiState.value.profile.copy(
+                        mfaEnabled = result.mfa_enabled,
+                        mfaMethod = result.mfa_method
+                    ),
+                    message = "Two-factor authentication enabled"
+                )
+                onDone()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,

@@ -9,15 +9,28 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.aauapp.ui.theme.Blue600
 
 @Composable
 fun AssistantScreen(
+    campusId: String = "campus-aau-cph",
+    buildingId: String? = null,
     viewModel: AssistantViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
     val messages by viewModel.messages.collectAsState()
     var input by remember { mutableStateOf("") }
+
+    val context = LocalContext.current
+    val locationService = remember {
+        (context.applicationContext as AAUAppApplication).appContainer.locationService
+    }
+    val fix by locationService.fix.collectAsState()
+    DisposableEffect(Unit) {
+        locationService.startUpdates()
+        onDispose { }
+    }
 
     Column(
         modifier = Modifier
@@ -69,7 +82,13 @@ fun AssistantScreen(
             Button(
                 onClick = {
                     if (input.isNotBlank()) {
-                        viewModel.sendMessage(input)
+                        viewModel.sendMessage(
+                            text = input,
+                            campusId = campusId,
+                            buildingId = buildingId,
+                            userLat = fix.latitude,
+                            userLon = fix.longitude
+                        )
                         input = ""
                     }
                 }

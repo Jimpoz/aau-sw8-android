@@ -3,6 +3,7 @@ package com.example.aauapp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.aauapp.data.remote.FloorDto
+import com.example.aauapp.data.remote.FloorMapDto
 import com.example.aauapp.data.remote.FloorPlanRepository
 import com.example.aauapp.data.remote.NavigationResultDto
 import com.example.aauapp.data.remote.RouteStepDto
@@ -16,14 +17,27 @@ data class FloorPlanUiState(
     val isLoading: Boolean = false,
     val floorId: String? = null,
     val floorName: String? = null,
+    val floorIndex: Int? = null,
+
+    val currentCampusId: String? = null,
+    val currentBuildingId: String? = null,
+
+    val availableFloors: List<FloorMapDto> = emptyList(),
 
     val spaces: List<SpaceDisplayDto> = emptyList(),
     val filteredSpaces: List<SpaceDisplayDto> = emptyList(),
 
     val selectedSpaceId: String? = null,
 
+    val pendingFocusSpaceId: String? = null,
+
+    val forcedUserSpaceId: String? = null,
+    val forcedLocationSource: String? = null,
+
     val routeSteps: List<RouteStepDto> = emptyList(),
     val routePolyline: List<List<Double>> = emptyList(),
+
+    val isNavigating: Boolean = false,
 
     val error: String? = null
 )
@@ -34,6 +48,22 @@ class FloorPlanViewModel : ViewModel() {
 
     private val _uiState = MutableStateFlow(FloorPlanUiState())
     val uiState: StateFlow<FloorPlanUiState> = _uiState.asStateFlow()
+
+    fun loadDefaultFloorForBuilding(buildingId: String) {
+        if (buildingId.isBlank()) return
+        viewModelScope.launch {
+            try {
+                val floors = repository.getBuildingFloors(buildingId)
+                val target = floors
+                    .filter { (it.floor_index ?: 0) >= 0 }
+                    .minByOrNull { it.floor_index ?: Int.MAX_VALUE }
+                    ?: floors.minByOrNull { it.floor_index ?: Int.MAX_VALUE }
+                target?.let { loadFloor(it.id) }
+            } catch (_: Exception) {
+                // No floors / offline
+            }
+        }
+    }
 
     fun loadFloor(floorId: String) {
         viewModelScope.launch {
@@ -53,15 +83,21 @@ class FloorPlanViewModel : ViewModel() {
                 val spaces: List<SpaceDisplayDto> =
                     repository.getFloorDisplay(floorId)
 
+                val floors = buildingFloorsFor(floor.building_id)
+
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     floorId = floor.id,
                     floorName = floor.display_name ?: floor.id,
+                    floorIndex = floor.floor_index,
+                    currentBuildingId = floor.building_id,
+                    currentCampusId = spaces.firstNotNullOfOrNull { it.campus_id },
+                    availableFloors = floors,
 
                     spaces = spaces,
                     filteredSpaces = spaces,
 
-                    selectedSpaceId = spaces.firstOrNull()?.id,
+                    selectedSpaceId = null,
                     error = null
                 )
 
@@ -72,6 +108,158 @@ class FloorPlanViewModel : ViewModel() {
                     error = e.message ?: "Failed to load floor"
                 )
             }
+        }
+    }
+
+    private suspend fun buildingFloorsFor(buildingId: String?): List<FloorMapDto> =
+        if (buildingId.isNullOrBlank()) emptyList()
+        else runCatching {
+            repository.getBuildingFloors(buildingId)
+                .sortedByDescending { it.floor_index ?: 0 }
+        }.getOrDefault(emptyList())
+
+    fun forceUserSpace(spaceId: String, floorId: String?, source: String = "camera") {
+        val needsFloorSwitch = !floorId.isNullOrBlank() && floorId != _uiState.value.floorId
+        if (!needsFloorSwitch) {
+            _uiState.value = _uiState.value.copy(
+                forcedUserSpaceId = spaceId,
+                forcedLocationSource = source,
+                selectedSpaceId = spaceId,
+                error = null
+            )
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            try {
+                val floor = repository.getFloor(floorId)
+                val spaces = repository.getFloorDisplay(floorId)
+                val floors = buildingFloorsFor(floor.building_id)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    floorId = floor.id,
+                    floorName = floor.display_name ?: floor.id,
+                    floorIndex = floor.floor_index,
+                    currentBuildingId = floor.building_id,
+                    currentCampusId = spaces.firstNotNullOfOrNull { it.campus_id },
+                    availableFloors = floors,
+                    spaces = spaces,
+                    filteredSpaces = spaces,
+                    forcedUserSpaceId = spaceId,
+                    forcedLocationSource = source,
+                    selectedSpaceId = spaceId,
+                    error = null
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Failed to load floor for snapped location"
+                )
+            }
+        }
+    }
+
+    fun openInMap(floorId: String?, spaceId: String?) {
+        val current = _uiState.value
+        if (!floorId.isNullOrBlank() && floorId != current.floorId) {
+            viewModelScope.launch {
+                _uiState.value = current.copy(
+                    isLoading = true,
+                    error = null,
+                    routeSteps = emptyList(),
+                    routePolyline = emptyList()
+                )
+                try {
+                    val floor = repository.getFloor(floorId)
+                    val spaces = repository.getFloorDisplay(floorId)
+                    val floors = buildingFloorsFor(floor.building_id)
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        floorId = floor.id,
+                        floorName = floor.display_name ?: floor.id,
+                        floorIndex = floor.floor_index,
+                        currentBuildingId = floor.building_id,
+                        currentCampusId = spaces.firstNotNullOfOrNull { it.campus_id },
+                        availableFloors = floors,
+                        spaces = spaces,
+                        filteredSpaces = spaces,
+                        selectedSpaceId = spaceId,
+                        pendingFocusSpaceId = spaceId,
+                        error = null
+                    )
+                } catch (e: Exception) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to open in map"
+                    )
+                }
+            }
+        } else {
+            _uiState.value = current.copy(
+                selectedSpaceId = spaceId ?: current.selectedSpaceId,
+                pendingFocusSpaceId = spaceId
+            )
+        }
+    }
+
+    fun startNavigation() {
+        if (_uiState.value.routePolyline.isEmpty()) return
+        _uiState.value = _uiState.value.copy(isNavigating = true)
+    }
+
+    fun stopNavigation() {
+        _uiState.value = _uiState.value.copy(isNavigating = false)
+    }
+
+    fun rerouteFrom(fromSpaceId: String) {
+        val state = _uiState.value
+        if (!state.isNavigating) return
+        val destination = state.selectedSpaceId ?: return
+        if (fromSpaceId == destination) return
+        viewModelScope.launch {
+            try {
+                val result = repository.navigate(
+                    fromSpaceId = fromSpaceId,
+                    toSpaceId = destination,
+                    accessibleOnly = NavigationPreferenceMemory.wheelchairOnly
+                )
+                _uiState.value = _uiState.value.copy(
+                    routeSteps = result.steps,
+                    routePolyline = result.polyline
+                )
+            } catch (_: Exception) {
+                // Keep the existing route; we'll retry on the next off-route tick.
+            }
+        }
+    }
+
+    fun updateLiveLocation(spaceId: String) {
+        _uiState.value = _uiState.value.copy(
+            forcedUserSpaceId = spaceId,
+            forcedLocationSource = "wifi"
+        )
+    }
+
+    fun clearForcedLocation() {
+        _uiState.value = _uiState.value.copy(
+            forcedUserSpaceId = null,
+            forcedLocationSource = null
+        )
+    }
+
+    fun clearSelection() {
+        _uiState.value = _uiState.value.copy(
+            selectedSpaceId = null,
+            routeSteps = emptyList(),
+            routePolyline = emptyList(),
+            isNavigating = false
+        )
+    }
+
+    fun clearFocus() {
+        if (_uiState.value.pendingFocusSpaceId != null) {
+            _uiState.value = _uiState.value.copy(pendingFocusSpaceId = null)
         }
     }
 
@@ -195,7 +383,8 @@ class FloorPlanViewModel : ViewModel() {
 
         _uiState.value = _uiState.value.copy(
             routeSteps = emptyList(),
-            routePolyline = emptyList()
+            routePolyline = emptyList(),
+            isNavigating = false
         )
     }
 }

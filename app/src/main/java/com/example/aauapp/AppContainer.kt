@@ -6,4 +6,6 @@ class AppContainer(context: Context) {
     val themePreferencesStore = ThemePreferencesStore(context)
     val userSessionStore = UserSessionStore(context)
     val locationService = LocationService(context)
+    val activityTracker = ActivityTracker(locationService)
+    val barometerService = BarometerService(context)
 }

@@ -1,6 +1,10 @@
 package com.example.aauapp
 
-import androidx.compose.foundation.Canvas
+import android.Manifest
+import android.content.pm.PackageManager
+import android.graphics.Paint
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -13,89 +17,334 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.aauapp.data.remote.FloorMapDto
 import com.example.aauapp.data.remote.RouteStepDto
 import com.example.aauapp.data.remote.SpaceDisplayDto
 import com.example.aauapp.ui.theme.Blue600
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.*
-import kotlinx.coroutines.launch
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.BoundingBox
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.CustomZoomButtonsController
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polygon
+import org.osmdroid.views.overlay.Polyline
+import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
+import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+
+// default to AAU CPH
+private val DEFAULT_CENTER = GeoPoint(55.6526, 12.5417)
+
+private const val OFF_ROUTE_METERS = 15.0
+private const val OFF_ROUTE_STREAK = 2
 
 @Composable
 fun GoogleMapScreen(
-    floorId: String,
+    floorId: String?,
     floorName: String = "Ground Floor",
-    onChangeFloor: () -> Unit,
-    onEditIndoorMap: () -> Unit,
+    canCalibrate: Boolean = false,
     viewModel: FloorPlanViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val scope = rememberCoroutineScope()
     var searchText by remember { mutableStateOf("") }
 
+    val context = LocalContext.current
+    val locationService = remember {
+        (context.applicationContext as AAUAppApplication).appContainer.locationService
+    }
+    val fix by locationService.fix.collectAsState()
+    DisposableEffect(Unit) {
+        locationService.startUpdates()
+        onDispose { locationService.stopUpdates() }
+    }
+
+    val positioningManager = remember { PositioningManager(context) }
+
+    val barometerService = remember {
+        (context.applicationContext as AAUAppApplication).appContainer.barometerService
+    }
+    val barometerFloorIndex by barometerService.currentFloorIndex.collectAsState()
+    DisposableEffect(Unit) {
+        onDispose { barometerService.stop() }
+    }
+    LaunchedEffect(uiState.availableFloors, uiState.floorIndex) {
+        val floors = uiState.availableFloors
+        val baseline = uiState.floorIndex
+        if (floors.isNotEmpty() && baseline != null) {
+            barometerService.start(
+                floors = floors.map { BarometerFloor(it.floor_index ?: 0, it.elevation_m) },
+                baselineFloorIndex = baseline
+            )
+        }
+    }
+    LaunchedEffect(barometerFloorIndex) {
+        val idx = barometerFloorIndex ?: return@LaunchedEffect
+        if (idx != uiState.floorIndex) {
+            uiState.availableFloors.firstOrNull { it.floor_index == idx }?.let {
+                viewModel.loadFloor(it.id)
+            }
+        }
+    }
+
+    LaunchedEffect(uiState.isNavigating, uiState.floorId) {
+        if (!uiState.isNavigating) return@LaunchedEffect
+        val fId = uiState.floorId ?: return@LaunchedEffect
+        var offRouteStreak = 0
+        while (isActive) {
+            val res = runCatching { positioningManager.locate(fId) }.getOrNull()
+            val sid = res?.space_id
+            if (sid != null) {
+                viewModel.updateLiveLocation(sid)
+
+                val snapshot = viewModel.uiState.value
+                val located = snapshot.spaces.firstOrNull { it.id == sid }
+                val lat = located?.centroid_lat
+                val lng = located?.centroid_lng
+                val route = snapshot.routePolyline
+                    .filter { it.size >= 2 }
+                    .map { GeoPoint(it[0], it[1]) }
+                if (lat != null && lng != null && route.size >= 2) {
+                    val deviation = routeDeviation(route, GeoPoint(lat, lng))
+                    if (deviation > OFF_ROUTE_METERS) {
+                        offRouteStreak++
+                        if (offRouteStreak >= OFF_ROUTE_STREAK) {
+                            offRouteStreak = 0
+                            viewModel.rerouteFrom(sid)
+                        }
+                    } else {
+                        offRouteStreak = 0
+                    }
+                }
+            }
+            delay(4000L)
+        }
+    }
+
+    var hasLocationPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context, Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val permLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> hasLocationPermission = granted }
+    LaunchedEffect(Unit) {
+        if (!hasLocationPermission) {
+            permLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
     LaunchedEffect(floorId) {
-        if (floorId.isNotBlank()) {
+        if (!floorId.isNullOrBlank() && floorId != uiState.floorId) {
             viewModel.loadFloor(floorId)
         }
     }
 
-    val aauCph = LatLng(55.65075, 12.54005)
-
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(aauCph, 18f)
-    }
-
     val suggestions = remember(searchText, uiState.spaces) {
         val q = searchText.trim()
-        if (q.isBlank()) {
-            emptyList()
-        } else {
-            uiState.spaces.filter {
-                it.display_name.orEmpty().contains(q, ignoreCase = true) ||
-                        it.short_name.orEmpty().contains(q, ignoreCase = true) ||
-                        it.id.contains(q, ignoreCase = true)
-            }.take(5)
+        if (q.isBlank()) emptyList()
+        else uiState.spaces.filter {
+            it.display_name.orEmpty().contains(q, ignoreCase = true) ||
+                it.short_name.orEmpty().contains(q, ignoreCase = true) ||
+                it.id.contains(q, ignoreCase = true)
+        }.take(5)
+    }
+
+    val selectedSpace = uiState.spaces.firstOrNull { it.id == uiState.selectedSpaceId }
+    val routeCardVisible = selectedSpace != null || uiState.routeSteps.isNotEmpty()
+
+    val navAnchor: GeoPoint? = run {
+        val forced = uiState.spaces.firstOrNull { it.id == uiState.forcedUserSpaceId }
+        val fLat = forced?.centroid_lat
+        val fLng = forced?.centroid_lng
+        val gLat = fix.latitude
+        val gLng = fix.longitude
+        when {
+            fLat != null && fLng != null -> GeoPoint(fLat, fLng)
+            gLat != null && gLng != null -> GeoPoint(gLat, gLng)
+            else -> null
         }
     }
 
-    val selectedSpace = uiState.spaces.firstOrNull {
-        it.id == uiState.selectedSpaceId
+    val stepsLeft = if (uiState.isNavigating && navAnchor != null) {
+        remainingSteps(uiState.routeSteps, navAnchor)
+    } else {
+        uiState.routeSteps.size
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    val bottomControlsPadding = if (routeCardVisible) 188.dp else 32.dp
 
-        GoogleMap(
+    var mapViewRef by remember { mutableStateOf<MapView?>(null) }
+    var locationOverlayRef by remember { mutableStateOf<MyLocationNewOverlay?>(null) }
+    var fittedFloorId by remember { mutableStateOf<String?>(null) }
+
+    fun flyTo(lat: Double?, lng: Double?) {
+        if (lat == null || lng == null) return
+        mapViewRef?.controller?.animateTo(GeoPoint(lat, lng))
+        mapViewRef?.controller?.setZoom(20.0)
+    }
+
+    LaunchedEffect(uiState.routePolyline) {
+        val pts = uiState.routePolyline
+            .filter { it.size >= 2 }
+            .map { GeoPoint(it[0], it[1]) }
+        if (pts.size >= 2) {
+            val bbox = BoundingBox.fromGeoPoints(pts)
+            mapViewRef?.post { mapViewRef?.zoomToBoundingBox(bbox, true, 160) }
+        }
+    }
+
+    LaunchedEffect(uiState.pendingFocusSpaceId, uiState.spaces) {
+        val id = uiState.pendingFocusSpaceId ?: return@LaunchedEffect
+        val space = uiState.spaces.firstOrNull { it.id == id } ?: return@LaunchedEffect
+        fittedFloorId = uiState.floorId   // suppress the floor-wide auto-fit
+        flyTo(space.centroid_lat, space.centroid_lng)
+        viewModel.clearFocus()
+    }
+
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFFE9EEF5))) {
+
+        AndroidView(
             modifier = Modifier.fillMaxSize(),
-            cameraPositionState = cameraPositionState,
-            properties = MapProperties(isMyLocationEnabled = false),
-            uiSettings = MapUiSettings(
-                zoomControlsEnabled = false,
-                compassEnabled = false,
-                myLocationButtonEnabled = false,
-                mapToolbarEnabled = false
-            )
+            factory = { ctx ->
+                Configuration.getInstance().userAgentValue = ctx.packageName
+                MapView(ctx).apply {
+                    setTileSource(TileSourceFactory.MAPNIK)
+                    setMultiTouchControls(true)
+                    zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
+                    setHorizontalMapRepetitionEnabled(false)
+                    setVerticalMapRepetitionEnabled(false)
+                    controller.setZoom(16.0)
+                    controller.setCenter(DEFAULT_CENTER)
+
+                    val locOverlay = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this)
+                    if (hasLocationPermission) locOverlay.enableMyLocation()
+                    overlays.add(locOverlay)
+                    locationOverlayRef = locOverlay
+
+                    onResume()
+                    mapViewRef = this
+                }
+            },
+            update = { mapView ->
+                val locOverlay = locationOverlayRef
+                if (hasLocationPermission) locOverlay?.enableMyLocation()
+
+                mapView.overlays.removeAll { it !== locOverlay }
+
+                uiState.spaces.forEach { space ->
+                    val pts = space.polygon_global.orEmpty()
+                        .filter { it.size >= 2 }
+                        .map { GeoPoint(it[0], it[1]) }
+                    if (pts.size >= 3) {
+                        val selected = space.id == uiState.selectedSpaceId
+                        val poly = Polygon(mapView).apply {
+                            points = pts
+                            fillPaint.color =
+                                (if (selected) Color(0xEE009DFF) else floorFillColor(space)).toArgb()
+                            outlinePaint.color = Color(0xFF1F2937).toArgb()
+                            outlinePaint.strokeWidth = if (selected) 6f else 3f
+                            title = space.display_name ?: space.short_name ?: space.id
+                            setOnClickListener { _, _, _ ->
+                                viewModel.selectSpace(space.id)
+                                true
+                            }
+                        }
+                        mapView.overlays.add(poly)
+                    }
+                }
+
+                val routePts = uiState.routePolyline
+                    .filter { it.size >= 2 }
+                    .map { GeoPoint(it[0], it[1]) }
+                if (routePts.size >= 2) {
+                    val (walked, remaining) =
+                        if (uiState.isNavigating && navAnchor != null) {
+                            splitRoute(routePts, navAnchor)
+                        } else {
+                            emptyList<GeoPoint>() to routePts
+                        }
+
+                    if (walked.size >= 2) {
+                        val trail = Polyline(mapView).apply {
+                            setPoints(walked)
+                            outlinePaint.color = Color(0x66667085).toArgb()
+                            outlinePaint.strokeWidth = 8f
+                            outlinePaint.strokeCap = Paint.Cap.ROUND
+                            outlinePaint.strokeJoin = Paint.Join.ROUND
+                            outlinePaint.isAntiAlias = true
+                        }
+                        mapView.overlays.add(trail)
+                    }
+
+                    if (remaining.size >= 2) {
+                        val halo = Polyline(mapView).apply {
+                            setPoints(remaining)
+                            outlinePaint.color = Color.White.toArgb()
+                            outlinePaint.strokeWidth = 20f
+                            outlinePaint.strokeCap = Paint.Cap.ROUND
+                            outlinePaint.strokeJoin = Paint.Join.ROUND
+                            outlinePaint.isAntiAlias = true
+                        }
+                        val main = Polyline(mapView).apply {
+                            setPoints(remaining)
+                            outlinePaint.color = Color(0xFF0A84FF).toArgb()
+                            outlinePaint.strokeWidth = 11f
+                            outlinePaint.strokeCap = Paint.Cap.ROUND
+                            outlinePaint.strokeJoin = Paint.Join.ROUND
+                            outlinePaint.isAntiAlias = true
+                        }
+                        mapView.overlays.add(halo)
+                        mapView.overlays.add(main)
+                    }
+                }
+
+                val forced = uiState.spaces.firstOrNull { it.id == uiState.forcedUserSpaceId }
+                val fLat = forced?.centroid_lat
+                val fLng = forced?.centroid_lng
+                if (forced != null && fLat != null && fLng != null) {
+                    val marker = Marker(mapView).apply {
+                        position = GeoPoint(fLat, fLng)
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        title = forced.display_name ?: "You are here"
+                    }
+                    mapView.overlays.add(marker)
+                }
+
+                if (uiState.floorId != null && uiState.floorId != fittedFloorId) {
+                    val bbox = floorBoundingBox(uiState.spaces)
+                    if (bbox != null) {
+                        mapView.post { mapView.zoomToBoundingBox(bbox, true, 120) }
+                        fittedFloorId = uiState.floorId
+                    }
+                }
+
+                mapView.invalidate()
+            }
         )
 
-        LocalFloorOverlay(
-            spaces = uiState.spaces,
-            selectedSpaceId = uiState.selectedSpaceId,
-            routeSteps = uiState.routeSteps,
-            modifier = Modifier.fillMaxSize()
-        )
+        DisposableEffect(Unit) {
+            onDispose { mapViewRef?.onPause() }
+        }
 
         if (uiState.isLoading) {
             LinearProgressIndicator(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.TopCenter)
+                modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)
             )
         }
 
@@ -106,208 +355,230 @@ fun GoogleMapScreen(
             onSuggestionClick = { space ->
                 searchText = ""
                 viewModel.selectSpace(space.id)
+                flyTo(space.centroid_lat, space.centroid_lng)
             },
-            onNavigateClick = {
-                viewModel.computeRouteToSelected()
-            }
+            onNavigateClick = { viewModel.computeRouteToSelected() }
         )
 
-        LocationPill(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(top = 126.dp, start = 16.dp)
-        )
+        if (uiState.forcedUserSpaceId != null) {
+            val pinnedName = uiState.spaces
+                .firstOrNull { it.id == uiState.forcedUserSpaceId }
+                ?.let { it.display_name ?: it.short_name ?: it.id }
+                ?: "registered landmark"
+            PinnedLocationBanner(
+                roomName = pinnedName,
+                methodLabel = fix.mode.label,
+                onClear = { viewModel.clearForcedLocation() },
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .fillMaxWidth()
+                    .padding(top = 116.dp, start = 16.dp, end = 84.dp)
+            )
+        } else {
+            LocationPill(
+                label = fix.mode.label,
+                accuracyMeters = fix.accuracyMeters,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = 126.dp, start = 16.dp)
+            )
+        }
 
         RightControls(
-            floorName = floorName,
+            floorName = uiState.floorName ?: floorName,
+            floors = uiState.availableFloors,
+            currentFloorId = uiState.floorId,
+            onSelectFloor = { fId -> viewModel.loadFloor(fId) },
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(top = 118.dp, end = 16.dp),
-            onRefresh = { viewModel.loadFloor(floorId) },
-            onZoomIn = {
-                scope.launch {
-                    cameraPositionState.animate(CameraUpdateFactory.zoomIn(), 250)
-                }
+            onRefresh = {
+                (floorId ?: uiState.floorId)?.let { viewModel.loadFloor(it) }
             },
-            onZoomOut = {
-                scope.launch {
-                    cameraPositionState.animate(CameraUpdateFactory.zoomOut(), 250)
-                }
-            },
-            onChangeFloor = onChangeFloor
+            onZoomIn = { mapViewRef?.controller?.zoomIn() },
+            onZoomOut = { mapViewRef?.controller?.zoomOut() }
         )
-
-        Button(
-            onClick = onEditIndoorMap,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 18.dp, bottom = 150.dp),
-            shape = RoundedCornerShape(999.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFFFF9500),
-                contentColor = Color.White
-            )
-        ) {
-            Icon(Icons.Default.Tune, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Edit")
-        }
 
         IconButton(
             onClick = {
-                scope.launch {
-                    cameraPositionState.animate(
-                        CameraUpdateFactory.newLatLngZoom(aauCph, 18f),
-                        600
-                    )
+                val mv = mapViewRef ?: return@IconButton
+                val bbox = floorBoundingBox(uiState.spaces)
+                if (bbox != null) {
+                    mv.zoomToBoundingBox(bbox, true, 120)
+                } else {
+                    val me = locationOverlayRef?.myLocation
+                    mv.controller.animateTo(me ?: DEFAULT_CENTER)
+                    mv.controller.setZoom(16.0)
                 }
             },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 22.dp, bottom = 142.dp)
+                .padding(end = 22.dp, bottom = bottomControlsPadding)
                 .size(74.dp)
                 .clip(CircleShape)
                 .background(Color(0xFF007AFF))
         ) {
             Icon(
-                imageVector = Icons.Default.Navigation,
+                imageVector = Icons.Default.CenterFocusStrong,
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.size(34.dp)
             )
         }
 
-        BottomRouteCard(
-            selectedSpace = selectedSpace,
-            routeSteps = uiState.routeSteps,
-            hasRoute = uiState.routeSteps.isNotEmpty(),
-            onNavigate = { viewModel.computeRouteToSelected() },
+        PositioningControls(
+            floorId = uiState.floorId ?: floorId ?: "",
+            spaces = uiState.spaces,
+            buildingId = uiState.currentBuildingId,
+            floors = uiState.availableFloors,
+            canCalibrate = canCalibrate,
+            onLocated = { spaceId, fId ->
+                viewModel.forceUserSpace(spaceId, fId, source = "wifi")
+            },
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(start = 16.dp, end = 16.dp, bottom = 18.dp)
+                .align(Alignment.BottomStart)
+                .padding(start = 18.dp, bottom = bottomControlsPadding)
         )
+
+        if (routeCardVisible) {
+            BottomRouteCard(
+                selectedSpace = selectedSpace,
+                routeSteps = uiState.routeSteps,
+                hasRoute = uiState.routeSteps.isNotEmpty(),
+                isNavigating = uiState.isNavigating,
+                stepsLeft = stepsLeft,
+                onNavigate = { viewModel.computeRouteToSelected() },
+                onStart = { viewModel.startNavigation() },
+                onStop = { viewModel.stopNavigation() },
+                onClose = { viewModel.clearSelection() },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(start = 16.dp, end = 16.dp, bottom = 34.dp)
+            )
+        }
 
         uiState.error?.let {
             ErrorPill(
                 text = it,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(20.dp)
+                modifier = Modifier.align(Alignment.Center).padding(20.dp)
             )
         }
     }
 }
 
-@Composable
-private fun LocalFloorOverlay(
-    spaces: List<SpaceDisplayDto>,
-    selectedSpaceId: String?,
-    routeSteps: List<RouteStepDto>,
-    modifier: Modifier = Modifier
-) {
-    val drawableSpaces = spaces.filter {
-        it.polygon.orEmpty().size >= 3
+private fun splitRoute(route: List<GeoPoint>, anchor: GeoPoint): Pair<List<GeoPoint>, List<GeoPoint>> {
+    if (route.size < 2) return emptyList<GeoPoint>() to route
+
+    var bestSeg = 0
+    var bestProj = route.first()
+    var bestDist = Double.MAX_VALUE
+    for (i in 0 until route.size - 1) {
+        val (proj, dist) = projectOntoSegment(anchor, route[i], route[i + 1])
+        if (dist < bestDist) {
+            bestDist = dist
+            bestSeg = i
+            bestProj = proj
+        }
     }
 
-    if (drawableSpaces.isEmpty()) return
+    val walked = route.subList(0, bestSeg + 1) + bestProj
+    val remaining = listOf(bestProj) + route.subList(bestSeg + 1, route.size)
+    return walked to remaining
+}
 
-    Canvas(
-        modifier = modifier.padding(
-            top = 125.dp,
-            bottom = 155.dp,
-            start = 20.dp,
-            end = 20.dp
+private fun routeDeviation(route: List<GeoPoint>, anchor: GeoPoint): Double {
+    if (route.size < 2) return 0.0
+    var best = Double.MAX_VALUE
+    for (i in 0 until route.size - 1) {
+        val (_, d) = projectOntoSegment(anchor, route[i], route[i + 1])
+        if (d < best) best = d
+    }
+    return best
+}
+
+private fun remainingSteps(steps: List<RouteStepDto>, anchor: GeoPoint): Int {
+    val located = steps.withIndex().filter { it.value.centroid_lat != null && it.value.centroid_lng != null }
+    if (located.isEmpty()) return steps.size
+    val nearest = located.minByOrNull {
+        val (_, d) = projectOntoSegment(
+            anchor,
+            GeoPoint(it.value.centroid_lat!!, it.value.centroid_lng!!),
+            GeoPoint(it.value.centroid_lat!!, it.value.centroid_lng!!)
         )
+        d
+    } ?: return steps.size
+    return (steps.size - nearest.index).coerceAtLeast(1)
+}
+
+private fun projectOntoSegment(p: GeoPoint, a: GeoPoint, b: GeoPoint): Pair<GeoPoint, Double> {
+    val mPerDegLat = 111_320.0
+    val mPerDegLng = 111_320.0 * Math.cos(Math.toRadians(a.latitude))
+    val ax = a.longitude * mPerDegLng; val ay = a.latitude * mPerDegLat
+    val bx = b.longitude * mPerDegLng; val by = b.latitude * mPerDegLat
+    val px = p.longitude * mPerDegLng; val py = p.latitude * mPerDegLat
+    val dx = bx - ax; val dy = by - ay
+    val len2 = dx * dx + dy * dy
+    val t = if (len2 == 0.0) 0.0 else (((px - ax) * dx + (py - ay) * dy) / len2).coerceIn(0.0, 1.0)
+    val projLat = a.latitude + t * (b.latitude - a.latitude)
+    val projLng = a.longitude + t * (b.longitude - a.longitude)
+    val ex = px - (ax + t * dx); val ey = py - (ay + t * dy)
+    return GeoPoint(projLat, projLng) to Math.sqrt(ex * ex + ey * ey)
+}
+
+private fun floorBoundingBox(spaces: List<SpaceDisplayDto>): BoundingBox? {
+    val pts = spaces.flatMap { it.polygon_global.orEmpty() }
+        .filter { it.size >= 2 }
+        .map { GeoPoint(it[0], it[1]) }
+    if (pts.isEmpty()) return null
+    return BoundingBox.fromGeoPoints(pts)
+}
+
+@Composable
+private fun PinnedLocationBanner(
+    roomName: String,
+    methodLabel: String,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.78f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
-        val allPoints = drawableSpaces.flatMap { it.polygon.orEmpty() }
-
-        val minX = allPoints.minOf { it.getOrNull(0) ?: 0.0 }
-        val maxX = allPoints.maxOf { it.getOrNull(0) ?: 0.0 }
-        val minY = allPoints.minOf { it.getOrNull(1) ?: 0.0 }
-        val maxY = allPoints.maxOf { it.getOrNull(1) ?: 0.0 }
-
-        val widthRange = (maxX - minX).coerceAtLeast(1.0)
-        val heightRange = (maxY - minY).coerceAtLeast(1.0)
-
-        val scale = minOf(
-            size.width / widthRange.toFloat(),
-            size.height / heightRange.toFloat()
-        ) * 0.9f
-
-        val offsetX = (size.width - widthRange.toFloat() * scale) / 2f
-        val offsetY = (size.height - heightRange.toFloat() * scale) / 2f
-
-        fun toScreen(point: List<Double>): Offset {
-            val x = point.getOrNull(0) ?: 0.0
-            val y = point.getOrNull(1) ?: 0.0
-
-            return Offset(
-                x = offsetX + ((x - minX).toFloat() * scale),
-                y = offsetY + ((y - minY).toFloat() * scale)
+        Row(
+            modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.PushPin,
+                contentDescription = null,
+                tint = Color(0xFFFFEB3B),
+                modifier = Modifier.size(18.dp)
             )
-        }
-
-        drawableSpaces.forEach { space ->
-            val path = Path()
-
-            space.polygon.orEmpty().forEachIndexed { index, point ->
-                val screenPoint = toScreen(point)
-
-                if (index == 0) {
-                    path.moveTo(screenPoint.x, screenPoint.y)
-                } else {
-                    path.lineTo(screenPoint.x, screenPoint.y)
-                }
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Pinned to: $roomName",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1
+                )
+                Text(
+                    text = "Tap × to return to $methodLabel",
+                    color = Color.White.copy(alpha = 0.7f),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1
+                )
             }
-
-            path.close()
-
-            val fillColor = if (space.id == selectedSpaceId) {
-                Color(0xEE009DFF)
-            } else {
-                floorFillColor(space)
+            IconButton(onClick = onClear, modifier = Modifier.size(34.dp)) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "Return to live location",
+                    tint = Color.White.copy(alpha = 0.9f),
+                    modifier = Modifier.size(20.dp)
+                )
             }
-
-            drawPath(path = path, color = fillColor)
-
-            drawPath(
-                path = path,
-                color = Color(0xFF1F2937),
-                style = Stroke(width = if (space.id == selectedSpaceId) 5f else 3f)
-            )
-        }
-
-        val routeSpaces = routeSteps.mapNotNull { step ->
-            drawableSpaces.firstOrNull { it.id == step.space_id }
-        }
-
-        if (routeSpaces.size >= 2) {
-            val routePath = Path()
-
-            routeSpaces.forEachIndexed { index, space ->
-                val polygon = space.polygon.orEmpty()
-                val centerX = polygon.mapNotNull { it.getOrNull(0) }.average()
-                val centerY = polygon.mapNotNull { it.getOrNull(1) }.average()
-                val point = toScreen(listOf(centerX, centerY))
-
-                if (index == 0) {
-                    routePath.moveTo(point.x, point.y)
-                } else {
-                    routePath.lineTo(point.x, point.y)
-                }
-            }
-
-            drawPath(
-                path = routePath,
-                color = Color.White,
-                style = Stroke(width = 18f)
-            )
-
-            drawPath(
-                path = routePath,
-                color = Color(0xFF0A84FF),
-                style = Stroke(width = 10f)
-            )
         }
     }
 }
@@ -326,9 +597,7 @@ private fun SearchOverlay(
             .padding(top = 38.dp, start = 16.dp, end = 16.dp)
     ) {
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(66.dp),
+            modifier = Modifier.fillMaxWidth().height(66.dp),
             shape = RoundedCornerShape(18.dp),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
@@ -336,9 +605,7 @@ private fun SearchOverlay(
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(start = 14.dp, end = 12.dp),
+                modifier = Modifier.fillMaxSize().padding(start = 14.dp, end = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -413,7 +680,6 @@ private fun SearchOverlay(
                                     text = space.display_name ?: space.short_name ?: space.id,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
-
                                 Text(
                                     text = space.space_type ?: "Space",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -429,7 +695,11 @@ private fun SearchOverlay(
 }
 
 @Composable
-private fun LocationPill(modifier: Modifier = Modifier) {
+private fun LocationPill(
+    label: String,
+    accuracyMeters: Float?,
+    modifier: Modifier = Modifier
+) {
     Button(
         onClick = {},
         modifier = modifier,
@@ -447,30 +717,28 @@ private fun LocationPill(modifier: Modifier = Modifier) {
             tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(18.dp)
         )
-
         Spacer(modifier = Modifier.width(7.dp))
-
-        Text("GPS", style = MaterialTheme.typography.titleSmall)
+        val text = accuracyMeters?.let { "$label · ±${it.toInt()}m" } ?: label
+        Text(text, style = MaterialTheme.typography.titleSmall)
     }
 }
 
 @Composable
 private fun RightControls(
     floorName: String,
+    floors: List<FloorMapDto>,
+    currentFloorId: String?,
+    onSelectFloor: (String) -> Unit,
     modifier: Modifier,
     onRefresh: () -> Unit,
     onZoomIn: () -> Unit,
-    onZoomOut: () -> Unit,
-    onChangeFloor: () -> Unit
+    onZoomOut: () -> Unit
 ) {
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.End
     ) {
-        WhiteFloatingIcon(
-            icon = Icons.Default.Refresh,
-            onClick = onRefresh
-        )
+        WhiteFloatingIcon(icon = Icons.Default.Refresh, onClick = onRefresh)
 
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -481,24 +749,16 @@ private fun RightControls(
             ),
             elevation = CardDefaults.cardElevation(defaultElevation = 7.dp)
         ) {
-            Column {
-                IconButton(
-                    onClick = onZoomIn,
-                    modifier = Modifier.size(52.dp)
-                ) {
+            Column(modifier = Modifier.width(52.dp)) {
+                IconButton(onClick = onZoomIn, modifier = Modifier.size(52.dp)) {
                     Icon(
                         Icons.Default.Add,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
-
                 HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
-
-                IconButton(
-                    onClick = onZoomOut,
-                    modifier = Modifier.size(52.dp)
-                ) {
+                IconButton(onClick = onZoomOut, modifier = Modifier.size(52.dp)) {
                     Icon(
                         Icons.Default.Remove,
                         contentDescription = null,
@@ -510,47 +770,104 @@ private fun RightControls(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        Button(
-            onClick = onChangeFloor,
-            modifier = Modifier.size(88.dp),
-            shape = CircleShape,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF007AFF),
-                contentColor = Color.White
-            ),
-            contentPadding = PaddingValues(4.dp),
-            elevation = ButtonDefaults.buttonElevation(defaultElevation = 8.dp)
-        ) {
-            Text(
-                text = floorName,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 3
-            )
-        }
+        FloorSwitcher(
+            floorName = floorName,
+            floors = floors,
+            currentFloorId = currentFloorId,
+            onSelectFloor = onSelectFloor
+        )
     }
 }
 
 @Composable
-private fun WhiteFloatingIcon(
-    icon: ImageVector,
-    onClick: () -> Unit
+private fun FloorSwitcher(
+    floorName: String,
+    floors: List<FloorMapDto>,
+    currentFloorId: String?,
+    onSelectFloor: (String) -> Unit
 ) {
+    var expanded by remember { mutableStateOf(false) }
+    val switchable = floors.size > 1
+
+    Box {
+        Card(
+            shape = CircleShape,
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF007AFF),
+                contentColor = Color.White
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+            onClick = { if (switchable) expanded = true },
+            modifier = Modifier.size(88.dp)
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = floorName,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 2,
+                        textAlign = TextAlign.Center
+                    )
+                    if (switchable) {
+                        Icon(
+                            imageVector = Icons.Default.UnfoldMore,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            floors.forEach { floor ->
+                val selected = floor.id == currentFloorId
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = floor.display_name ?: floorLabel(floor.floor_index),
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Layers,
+                            contentDescription = null,
+                            tint = if (selected) Blue600 else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    onClick = {
+                        expanded = false
+                        if (!selected) onSelectFloor(floor.id)
+                    }
+                )
+            }
+        }
+    }
+}
+
+private fun floorLabel(index: Int?): String = when {
+    index == null -> "Floor"
+    index == 0 -> "Ground"
+    index < 0 -> "Basement ${-index}"
+    else -> "Floor $index"
+}
+
+@Composable
+private fun WhiteFloatingIcon(icon: ImageVector, onClick: () -> Unit) {
     Card(
         shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 7.dp)
     ) {
-        IconButton(
-            onClick = onClick,
-            modifier = Modifier.size(58.dp)
-        ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface
-            )
+        IconButton(onClick = onClick, modifier = Modifier.size(58.dp)) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
         }
     }
 }
@@ -560,7 +877,12 @@ private fun BottomRouteCard(
     selectedSpace: SpaceDisplayDto?,
     routeSteps: List<RouteStepDto>,
     hasRoute: Boolean,
+    isNavigating: Boolean,
+    stepsLeft: Int,
     onNavigate: () -> Unit,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val destinationTitle = selectedSpace?.display_name
@@ -568,77 +890,102 @@ private fun BottomRouteCard(
         ?: "Destination"
 
     val instruction = routeSteps.firstOrNull()?.instruction
-        ?: if (selectedSpace == null) {
-            "Search or select a destination"
-        } else {
-            "Route to $destinationTitle"
-        }
+        ?: if (selectedSpace == null) "Search or select a destination"
+        else "Route to $destinationTitle"
+
+    val actionIcon = when {
+        !hasRoute -> Icons.Default.Navigation
+        isNavigating -> Icons.Default.Stop
+        else -> Icons.Default.PlayArrow
+    }
+    val actionDesc = when {
+        !hasRoute -> "Compute route"
+        isNavigating -> "Stop navigation"
+        else -> "Start navigation"
+    }
+    val onAction: () -> Unit = when {
+        !hasRoute -> onNavigate
+        isNavigating -> onStop
+        else -> onStart
+    }
 
     Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(132.dp),
+        modifier = modifier.fillMaxWidth().height(132.dp),
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF0057D9)),
         elevation = CardDefaults.cardElevation(defaultElevation = 14.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
+        Box(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxSize().padding(20.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(58.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.18f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (hasRoute) {
+                            Icons.AutoMirrored.Filled.KeyboardArrowRight
+                        } else {
+                            Icons.Default.Navigation
+                        },
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(40.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Column(modifier = Modifier.weight(1f).padding(end = 28.dp)) {
+                    Text(
+                        text = if (isNavigating) "NOW" else "READY",
+                        color = Color.White.copy(alpha = 0.82f),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Text(
+                        text = instruction,
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleLarge,
+                        maxLines = 2
+                    )
+                    Text(
+                        text = "${stepsLeft.coerceAtLeast(0)} steps left • $destinationTitle",
+                        color = Color.White.copy(alpha = 0.75f),
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1
+                    )
+                }
+
+                IconButton(
+                    onClick = onAction,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.18f))
+                ) {
+                    Icon(actionIcon, contentDescription = actionDesc, tint = Color.White)
+                }
+            }
+
+            // Dismiss the card (clears the selection/route).
+            IconButton(
+                onClick = onClose,
                 modifier = Modifier
-                    .size(58.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.18f)),
-                contentAlignment = Alignment.Center
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .size(32.dp)
             ) {
                 Icon(
-                    imageVector = if (hasRoute) {
-                        Icons.AutoMirrored.Filled.KeyboardArrowRight
-                    } else {
-                        Icons.Default.Navigation
-                    },
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(40.dp)
+                    Icons.Default.Close,
+                    contentDescription = "Close",
+                    tint = Color.White.copy(alpha = 0.9f),
+                    modifier = Modifier.size(20.dp)
                 )
-            }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = if (hasRoute) "NOW" else "READY",
-                    color = Color.White.copy(alpha = 0.82f),
-                    style = MaterialTheme.typography.labelLarge
-                )
-
-                Text(
-                    text = instruction,
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleLarge,
-                    maxLines = 2
-                )
-
-                Text(
-                    text = "${routeSteps.size.coerceAtLeast(0)} steps left • $destinationTitle",
-                    color = Color.White.copy(alpha = 0.75f),
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1
-                )
-            }
-
-            IconButton(
-                onClick = onNavigate,
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.18f))
-            ) {
-                Icon(Icons.Default.Navigation, contentDescription = null, tint = Color.White)
             }
         }
     }
@@ -653,26 +1000,23 @@ private fun ErrorPill(text: String, modifier: Modifier = Modifier) {
             containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.92f)
         )
     ) {
-        Text(
-            text = text,
-            color = Color.White,
-            modifier = Modifier.padding(14.dp)
-        )
+        Text(text = text, color = Color.White, modifier = Modifier.padding(14.dp))
     }
 }
 
 private fun floorFillColor(space: SpaceDisplayDto): Color {
     val type = space.space_type.orEmpty().uppercase()
-
     return when {
         "CORRIDOR" in type || "PASSAGE" in type || "LOBBY" in type ->
             Color(0xEE009DFF)
 
-        "RESTROOM" in type || "WC" in type ->
-            Color(0xFFFFA640)
+        "RESTROOM" in type || "WC" in type || "TOILET" in type || "BATHROOM" in type ->
+            Color(0xFFFF73B3)
 
-        "STAIR" in type || "ELEVATOR" in type ->
-            Color(0xFFE7E4EC)
+        "STAIR" in type || "ELEVATOR" in type || "ESCALATOR" in type ||
+            "RAMP" in type || "CONNECTOR" in type || "BRIDGE" in type ||
+            "TUNNEL" in type || "WALKWAY" in type ->
+            Color(0xFFFF9519)
 
         else ->
             Color(0xCCB6DFFF)

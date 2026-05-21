@@ -51,18 +51,17 @@ fun MainScreen(
         mutableStateOf(false)
     }
 
-    var showFloorPicker by rememberSaveable("show_floor_picker") {
-        mutableStateOf(false)
-    }
-
     var pendingCameraDetection by rememberSaveable("pending_camera_detection") {
         mutableStateOf<String?>(null)
     }
 
-    LaunchedEffect(profile.defaultFloorId) {
+    LaunchedEffect(profile.defaultFloorId, profile.buildingId) {
         val floorId = profile.defaultFloorId
-        if (!floorId.isNullOrBlank()) {
-            floorPlanViewModel.loadFloor(floorId)
+        val buildingId = profile.buildingId
+        when {
+            !floorId.isNullOrBlank() -> floorPlanViewModel.loadFloor(floorId)
+            !buildingId.isNullOrBlank() ->
+                floorPlanViewModel.loadDefaultFloorForBuilding(buildingId)
         }
     }
 
@@ -91,9 +90,6 @@ fun MainScreen(
                         selected = selectedTab == 0,
                         onClick = {
                             selectedTab = 0
-                            if (profile.defaultFloorId.isNullOrBlank()) {
-                                showFloorPicker = true
-                            }
                         },
                         icon = {
                             Icon(Icons.Default.Map, contentDescription = null)
@@ -178,39 +174,59 @@ fun MainScreen(
             } else {
                 when (selectedTab) {
                     0 -> {
+                        val mapRole = profile.role?.lowercase()
                         GoogleMapScreen(
-                            floorId = profile.defaultFloorId ?: "default",
+                            floorId = floorState.floorId ?: profile.defaultFloorId,
                             floorName = floorState.floorName ?: "Ground Floor",
-                            onChangeFloor = {
-                                showFloorPicker = true
-                            },
-                            onEditIndoorMap = {
-                                showFloorPicker = true
-                            },
+                            canCalibrate = mapRole == "owner" || mapRole == "editor",
                             viewModel = floorPlanViewModel
                         )
                     }
 
                     1 -> {
-                        AssistantScreen()
+                        AssistantScreen(
+                            campusId = profile.campusId ?: "campus-aau-cph",
+                            buildingId = profile.buildingId
+                        )
                     }
 
                     2 -> {
+                        val role = profile.role?.lowercase()
                         CameraScreen(
-                            facilityId = profile.campusId ?: "aau",
+                            facilityId = floorState.currentCampusId
+                                ?: profile.campusId ?: "aau",
+                            canRegisterLandmark = role == "owner" || role == "editor",
+                            buildingId = floorState.currentBuildingId
+                                ?: profile.buildingId,
+                            preferredFloorId = floorState.floorId
+                                ?: profile.defaultFloorId,
                             onScanRoom = {
                                 showRoomUpload = true
                             },
                             onAskDirections = { destination ->
                                 pendingCameraDetection = destination
                                 selectedTab = 0
-                                showFloorPicker = false
+                            },
+                            onLocationSnap = { location ->
+                                val spaceId = location.space_id ?: location.id
+                                if (spaceId.isNotBlank()) {
+                                    floorPlanViewModel.forceUserSpace(
+                                        spaceId = spaceId,
+                                        floorId = location.floor_id
+                                    )
+                                    selectedTab = 0
+                                }
                             }
                         )
                     }
 
                     3 -> {
-                        ExploreScreen()
+                        ExploreScreen(
+                            onOpenInMap = { floorId, spaceId ->
+                                floorPlanViewModel.openInMap(floorId, spaceId)
+                                selectedTab = 0
+                            }
+                        )
                     }
 
                     4 -> {

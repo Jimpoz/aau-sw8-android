@@ -35,7 +35,10 @@ class AssistantViewModel : ViewModel() {
 
     fun sendMessage(
         text: String,
-        campusId: String = "campus-aau-cph"
+        campusId: String = "campus-aau-cph",
+        buildingId: String? = null,
+        userLat: Double? = null,
+        userLon: Double? = null
     ) {
         val cleanText = text.trim()
         if (cleanText.isEmpty()) return
@@ -49,7 +52,10 @@ class AssistantViewModel : ViewModel() {
             try {
                 val answer = repository.sendMessage(
                     text = cleanText,
-                    campusId = campusId
+                    campusId = campusId,
+                    buildingId = buildingId,
+                    userLat = userLat,
+                    userLon = userLon
                 )
 
                 _messages.value = _messages.value + ChatMessage(

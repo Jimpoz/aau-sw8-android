@@ -101,6 +101,7 @@ data class FloorMapDto(
     val building_id: String? = null,
     val floor_index: Int? = null,
     val display_name: String? = null,
+    val elevation_m: Double? = null,
     val floor_plan_url: String? = null,
     val floor_plan_scale: Double? = null,
     val floor_plan_origin_x: Double? = null,
@@ -169,7 +170,10 @@ data class NavigationResultDto(
 
 data class AssistantChatRequest(
     val user_query: String,
-    val campus_id: String
+    val campus_id: String,
+    val building_id: String? = null,
+    val user_lat: Double? = null,
+    val user_lon: Double? = null
 )
 
 data class AssistantChatResponse(
@@ -206,6 +210,18 @@ data class RoomObjectSetupResponseDto(
     val room_summary: List<ViewSummaryDto> = emptyList()
 )
 
+data class RegisteredLandmarkDto(
+    val id: String,
+    val name: String,
+    val space_id: String,
+    val building_id: String? = null,
+    val campus_id: String? = null,
+    val image_width: Int? = null,
+    val image_height: Int? = null,
+    val created_by: String? = null,
+    val created_at: String? = null
+)
+
 data class MfaConfirmRequestDto(
     val code: String
 )
@@ -225,6 +241,17 @@ data class MfaStateResponseDto(
     val mfa_method: String? = null
 )
 
+data class MfaEmailSetupResponseDto(
+    val setup_challenge_token: String,
+    val challenge_expires_at: String? = null,
+    val recovery_codes: List<String> = emptyList()
+)
+
+data class MfaEmailConfirmRequestDto(
+    val challenge_token: String,
+    val code: String
+)
+
 data class PasswordChangeRequestDto(
     val current_password: String,
     val new_password: String
@@ -242,6 +269,63 @@ data class PasswordResetRequestDto(
 
 data class DeleteAccountRequestDto(
     val password: String
+)
+
+data class WifiFingerprintRequest(
+    val space_id: String,
+    val floor_id: String? = null,
+    val readings: Map<String, Float>,
+    val rtt_distances_mm: Map<String, Float>? = null,
+    val sample_count: Int = 1
+)
+
+data class WifiFingerprintResponse(
+    val id: String,
+    val space_id: String,
+    val floor_id: String? = null,
+    val sample_count: Int = 1
+)
+
+data class WifiLocateRequest(
+    val floor_id: String,
+    val readings: Map<String, Float>,
+    val rtt_distances_mm: Map<String, Float>? = null
+)
+
+data class WifiLocateResponse(
+    val space_id: String? = null,
+    val confidence: Float = 0f,
+    val supporting_count: Int = 0,
+    val x: Double? = null,
+    val y: Double? = null,
+    val method: String = "rssi_knn"
+)
+
+data class WifiAccessPointRequest(
+    val bssid: String,
+    val ssid: String? = null,
+    val floor_id: String? = null,
+    val x: Double? = null,
+    val y: Double? = null,
+    val supports_rtt: Boolean = false
+)
+
+data class WifiFloorSurveyResponse(
+    val floor_id: String,
+    val total_fingerprints: Int,
+    val per_space_counts: Map<String, Int> = emptyMap()
+)
+
+data class ActivityTotalsDto(
+    val day: String,
+    val distance_m: Double = 0.0,
+    val steps: Int = 0
+)
+
+data class ActivityIncrementRequest(
+    val day: String? = null,
+    val distance_m: Double = 0.0,
+    val steps: Int = 0
 )
 
 interface BackendApi {
@@ -286,6 +370,14 @@ interface BackendApi {
     @POST("api/v1/auth/mfa/disable")
     suspend fun disableMfa(
         @Body request: MfaDisableRequestDto
+    ): MfaStateResponseDto
+
+    @POST("api/v1/auth/mfa/email/setup")
+    suspend fun setupMfaEmail(): MfaEmailSetupResponseDto
+
+    @POST("api/v1/auth/mfa/email/confirm")
+    suspend fun confirmMfaEmail(
+        @Body request: MfaEmailConfirmRequestDto
     ): MfaStateResponseDto
 
     @POST("api/v1/auth/password/change")
@@ -355,4 +447,53 @@ interface BackendApi {
         @Part south_image: MultipartBody.Part,
         @Part west_image: MultipartBody.Part
     ): RoomObjectSetupResponseDto
+
+    @Multipart
+    @POST("api/v1/landmarks")
+    suspend fun registerLandmark(
+        @Part("name") name: RequestBody,
+        @Part("space_id") spaceId: RequestBody,
+        @Part image: MultipartBody.Part
+    ): RegisteredLandmarkDto
+
+    @GET("api/v1/landmarks")
+    suspend fun listLandmarks(
+        @Query("space_id") spaceId: String? = null,
+        @Query("building_id") buildingId: String? = null
+    ): List<RegisteredLandmarkDto>
+
+    @HTTP(method = "DELETE", path = "api/v1/landmarks/{id}", hasBody = false)
+    suspend fun deleteLandmark(
+        @Path("id") id: String
+    ): Response<Unit>
+
+    @POST("api/v1/positioning/fingerprints")
+    suspend fun createWifiFingerprint(
+        @Body request: WifiFingerprintRequest
+    ): WifiFingerprintResponse
+
+    @GET("api/v1/positioning/fingerprints")
+    suspend fun wifiFloorSurvey(
+        @Query("floor_id") floorId: String
+    ): WifiFloorSurveyResponse
+
+    @POST("api/v1/positioning/locate")
+    suspend fun wifiLocate(
+        @Body request: WifiLocateRequest
+    ): WifiLocateResponse
+
+    @POST("api/v1/positioning/access-points")
+    suspend fun upsertWifiAccessPoint(
+        @Body request: WifiAccessPointRequest
+    ): Response<Unit>
+
+    @GET("api/v1/me/activity")
+    suspend fun getActivity(
+        @Query("day") day: String? = null
+    ): ActivityTotalsDto
+
+    @POST("api/v1/me/activity")
+    suspend fun addActivity(
+        @Body request: ActivityIncrementRequest
+    ): ActivityTotalsDto
 }

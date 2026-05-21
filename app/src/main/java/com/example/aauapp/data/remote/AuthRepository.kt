@@ -31,6 +31,11 @@ class AuthRepository(
             MfaDisableRequestDto(password = password)
         )
     }
+
+    suspend fun setupMfaEmail(): MfaEmailSetupResponseDto = api.setupMfaEmail()
+
+    suspend fun confirmMfaEmail(challengeToken: String, code: String): MfaStateResponseDto =
+        api.confirmMfaEmail(MfaEmailConfirmRequestDto(challengeToken, code))
     suspend fun changePassword(currentPassword: String, newPassword: String) {
         api.changePassword(PasswordChangeRequestDto(currentPassword, newPassword))
     }

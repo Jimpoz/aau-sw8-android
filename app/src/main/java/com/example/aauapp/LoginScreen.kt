@@ -34,6 +34,7 @@ fun LoginScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var organizationId by remember { mutableStateOf("") }
+    var showForgot by remember { mutableStateOf(false) }
 
     val canSubmit =
         email.isNotBlank() &&
@@ -191,7 +192,7 @@ fun LoginScreen(
             if (!isSignupMode) {
                 Spacer(modifier = Modifier.height(12.dp))
 
-                TextButton(onClick = {}) {
+                TextButton(onClick = { showForgot = true }) {
                     Text(
                         text = "Forgot password?",
                         color = white.copy(alpha = 0.95f)
@@ -252,6 +253,98 @@ fun LoginScreen(
             }
         )
     }
+
+    if (showForgot) {
+        ForgotPasswordDialog(
+            initialEmail = email,
+            isLoading = uiState.isLoading,
+            message = uiState.message,
+            error = uiState.error,
+            onSendCode = { viewModel.forgotPassword(it) },
+            onReset = { mail, code, newPassword ->
+                viewModel.resetPassword(mail, code, newPassword)
+            },
+            onDismiss = { showForgot = false }
+        )
+    }
+}
+
+@Composable
+private fun ForgotPasswordDialog(
+    initialEmail: String,
+    isLoading: Boolean,
+    message: String?,
+    error: String?,
+    onSendCode: (String) -> Unit,
+    onReset: (String, String, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var mail by remember { mutableStateOf(initialEmail) }
+    var code by remember { mutableStateOf("") }
+    var newPassword by remember { mutableStateOf("") }
+    var codeSent by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (codeSent) "Reset password" else "Forgot password") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = mail,
+                    onValueChange = { mail = it },
+                    label = { Text("Email") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (codeSent) {
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = code,
+                        onValueChange = { code = it },
+                        label = { Text("6-digit code") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = newPassword,
+                        onValueChange = { newPassword = it },
+                        label = { Text("New password (min 8)") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                message?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+                }
+                error?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            if (!codeSent) {
+                Button(
+                    onClick = {
+                        onSendCode(mail.trim())
+                        codeSent = true
+                    },
+                    enabled = mail.isNotBlank() && !isLoading
+                ) { Text("Send code") }
+            } else {
+                Button(
+                    onClick = { onReset(mail.trim(), code.trim(), newPassword) },
+                    enabled = code.isNotBlank() && newPassword.length >= 8 && !isLoading
+                ) { Text("Reset") }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        }
+    )
 }
 
 @Composable

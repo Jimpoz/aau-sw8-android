@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowRight
@@ -31,8 +32,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -44,9 +47,13 @@ import java.util.concurrent.Executors
 @Composable
 fun CameraScreen(
     facilityId: String = "aau",
+    canRegisterLandmark: Boolean = false,
+    buildingId: String? = null,
+    preferredFloorId: String? = null,
     onAskDirections: (String) -> Unit = {},
     onScanRoom: () -> Unit = {},
-    onScanQr: () -> Unit = {}
+    onScanQr: () -> Unit = {},
+    onLocationSnap: (RemoteLocation) -> Unit = {}
 ) {
     var showLiveCamera by remember { mutableStateOf(false) }
 
@@ -59,8 +66,12 @@ fun CameraScreen(
     } else {
         LiveCameraScanner(
             facilityId = facilityId,
+            canRegisterLandmark = canRegisterLandmark,
+            buildingId = buildingId,
+            preferredFloorId = preferredFloorId,
             onBack = { showLiveCamera = false },
-            onAskDirections = onAskDirections
+            onAskDirections = onAskDirections,
+            onLocationSnap = onLocationSnap
         )
     }
 }
@@ -103,15 +114,15 @@ private fun CameraLandingScreen(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(250.dp),
+                .heightIn(min = 250.dp),
             shape = RoundedCornerShape(26.dp),
             colors = CardDefaults.cardColors(containerColor = cardBg),
             elevation = CardDefaults.cardElevation(0.dp)
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(22.dp),
+                    .fillMaxWidth()
+                    .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
@@ -140,9 +151,10 @@ private fun CameraLandingScreen(
                 Spacer(Modifier.height(12.dp))
 
                 Text(
-                    text = "Point your camera at a sign, QR code or\nbuilding marker.",
+                    text = "Point your camera at a sign, QR code or building marker.",
                     style = MaterialTheme.typography.bodyLarge,
-                    color = muted
+                    color = muted,
+                    textAlign = TextAlign.Center
                 )
             }
         }
@@ -264,7 +276,11 @@ private fun IosDivider() {
 private fun LiveCameraScanner(
     facilityId: String,
     onBack: () -> Unit,
-    onAskDirections: (String) -> Unit
+    onAskDirections: (String) -> Unit,
+    onLocationSnap: (RemoteLocation) -> Unit = {},
+    canRegisterLandmark: Boolean = false,
+    buildingId: String? = null,
+    preferredFloorId: String? = null
 ) {
     val context = LocalContext.current
     val lifecycleOwner = context as LifecycleOwner
@@ -282,8 +298,31 @@ private fun LiveCameraScanner(
     var detections by remember { mutableStateOf<List<RemoteDetection>>(emptyList()) }
     var resolvedLocation by remember { mutableStateOf<RemoteLocation?>(null) }
 
+    // When ON (default), the camera tries to localise the user against
+    // registered landmarks and shows yellow boxes; when OFF it shows the
+    // raw green object detections instead. Mirrors the iOS Find Location mode.
+    var findLocationMode by remember { mutableStateOf(true) }
+    // De-dupe snaps so we only fire once per resolved space (mirrors iOS
+    // lastHandledSpaceId).
+    var lastSnappedSpaceId by remember { mutableStateOf<String?>(null) }
+
+    // Landmark registration: the frozen frame the user is registering, and
+    // whether a one-shot capture is currently in flight.
+    var capturedJpeg by remember { mutableStateOf<ByteArray?>(null) }
+    var isCapturing by remember { mutableStateOf(false) }
+
     var showDirectionsDialog by remember { mutableStateOf(false) }
     var destinationQuery by remember { mutableStateOf("") }
+
+    LaunchedEffect(resolvedLocation?.id, findLocationMode) {
+        val loc = resolvedLocation
+        if (!findLocationMode || loc == null) return@LaunchedEffect
+        if (loc.kind.equals("unknown", ignoreCase = true)) return@LaunchedEffect
+        val snapKey = loc.space_id?.ifBlank { null } ?: loc.id.ifBlank { null } ?: return@LaunchedEffect
+        if (snapKey == lastSnappedSpaceId) return@LaunchedEffect
+        lastSnappedSpaceId = snapKey
+        onLocationSnap(loc)
+    }
 
     val permissionLauncher =
         rememberLauncherForActivityResult(
@@ -340,6 +379,21 @@ private fun LiveCameraScanner(
         }
     }
 
+    // Pause the live stream while the registration sheet is up so the camera
+    // feed doesn't lag the form; reconnect (refreshing the ORB cache so a
+    // just-registered landmark is matchable) when it closes. Mirrors iOS.
+    LaunchedEffect(capturedJpeg != null) {
+        if (capturedJpeg != null) {
+            visionService.disconnect()
+        } else {
+            visionService.connect(
+                baseUrl = BuildConfig.BACKEND_BASE_URL,
+                apiKey = BuildConfig.BACKEND_API_KEY,
+                facilityId = facilityId
+            )
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
             factory = { ctx ->
@@ -386,7 +440,7 @@ private fun LiveCameraScanner(
                 .background(Color.Black.copy(alpha = 0.08f))
         )
 
-        DetectionOverlay(detections)
+        DetectionOverlay(detections, findLocationMode)
 
         Row(
             modifier = Modifier
@@ -420,25 +474,76 @@ private fun LiveCameraScanner(
             }
         }
 
-        Button(
-            onClick = {
-                destinationQuery = resolvedLocation?.name
-                    ?: detections.firstOrNull()?.label
-                            ?: ""
-                showDirectionsDialog = true
-            },
+        Row(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(start = 16.dp, bottom = 24.dp),
-            shape = RoundedCornerShape(999.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color.Black.copy(alpha = 0.65f),
-                contentColor = Color.White
-            )
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.LocationOn, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Ask for Directions")
+            Button(
+                onClick = {
+                    destinationQuery = resolvedLocation?.name
+                        ?: detections.firstOrNull()?.label
+                                ?: ""
+                    showDirectionsDialog = true
+                },
+                shape = RoundedCornerShape(999.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.Black.copy(alpha = 0.65f),
+                    contentColor = Color.White
+                )
+            ) {
+                Icon(Icons.Default.LocationOn, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Directions")
+            }
+
+            if (canRegisterLandmark) {
+                Button(
+                    onClick = {
+                        if (!isCapturing) {
+                            isCapturing = true
+                            visionService.captureNextFrame { bytes ->
+                                isCapturing = false
+                                capturedJpeg = bytes
+                            }
+                        }
+                    },
+                    enabled = !isCapturing,
+                    shape = RoundedCornerShape(999.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.Black.copy(alpha = 0.65f),
+                        contentColor = Color.White
+                    )
+                ) {
+                    if (isCapturing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(Icons.Default.AddAPhoto, contentDescription = null)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text("Register")
+                }
+            }
+
+            Button(
+                onClick = { findLocationMode = !findLocationMode },
+                shape = RoundedCornerShape(999.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (findLocationMode) Color(0xFFFFEB3B)
+                    else Color.Black.copy(alpha = 0.65f),
+                    contentColor = if (findLocationMode) Color.Black else Color.White
+                )
+            ) {
+                Icon(Icons.Default.LocationOn, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(if (findLocationMode) "Find Location · ON" else "Find Location")
+            }
         }
 
         DetectionLabel(
@@ -483,22 +588,82 @@ private fun LiveCameraScanner(
             }
         )
     }
+
+    val jpegToRegister = capturedJpeg
+    if (jpegToRegister != null) {
+        LandmarkRegistrationSheet(
+            jpeg = jpegToRegister,
+            buildingId = buildingId,
+            preferredFloorId = preferredFloorId,
+            onDismiss = { capturedJpeg = null },
+            onRegistered = { lastSnappedSpaceId = null }
+        )
+    }
 }
 
 @Composable
-private fun DetectionOverlay(detections: List<RemoteDetection>) {
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        detections.forEach { detection ->
-            val left = detection.x * size.width
-            val top = detection.y * size.height
-            val width = detection.width * size.width
-            val height = detection.height * size.height
+private fun DetectionOverlay(
+    detections: List<RemoteDetection>,
+    findLocationMode: Boolean
+) {
+    val landmarkColor = Color(0xFFFFEB3B)
+    val objectColor = Color(0xFF00FF66)
 
+    val textPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.BLACK
+            textSize = 34f
+            isAntiAlias = true
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
+    }
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        detections.forEach { d ->
+            val isLandmark = d.is_landmark_match == true
+            // Landmark boxes only when localising and confident; raw object
+            // boxes only when not localising. Mirrors the iOS shouldShow gate.
+            val shouldShow = if (isLandmark) {
+                findLocationMode && d.confidence > 0.85f
+            } else {
+                !findLocationMode
+            }
+            if (!shouldShow) return@forEach
+
+            val left = d.x * size.width
+            val width = d.width * size.width
+            val height = d.height * size.height
+            // Server emits y as bottom-origin (distance from image bottom to
+            // the box's top edge); flip to top-origin screen coords like iOS.
+            val top = (1f - d.y - d.height) * size.height
+
+            val stroke = if (isLandmark) landmarkColor else objectColor
             drawRect(
-                color = Color(0xFF00FF66),
+                color = stroke,
                 topLeft = Offset(left, top),
                 size = Size(width, height),
-                style = Stroke(width = 4f)
+                style = Stroke(width = if (isLandmark) 6f else 4f)
+            )
+
+            val labelText = if (isLandmark && !d.landmark_name.isNullOrBlank()) {
+                "${d.landmark_name} (${(d.confidence * 100).toInt()}%)"
+            } else {
+                "${d.label} (${(d.confidence * 100).toInt()}%)"
+            }
+            val pad = 10f
+            val labelHeight = 46f
+            val labelWidth = textPaint.measureText(labelText) + pad * 2
+            val labelTop = (top - labelHeight).coerceAtLeast(0f)
+            drawRect(
+                color = stroke,
+                topLeft = Offset(left, labelTop),
+                size = Size(labelWidth, labelHeight)
+            )
+            drawContext.canvas.nativeCanvas.drawText(
+                labelText,
+                left + pad,
+                labelTop + labelHeight - 14f,
+                textPaint
             )
         }
     }
