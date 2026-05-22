@@ -185,8 +185,11 @@ fun MainScreen(
 
                     1 -> {
                         AssistantScreen(
-                            campusId = profile.campusId ?: "campus-aau-cph",
-                            buildingId = profile.buildingId
+                            campusId = floorState.currentCampusId
+                                ?: profile.campusId ?: "campus-aau-cph",
+                            buildingId = floorState.currentBuildingId
+                                ?: profile.buildingId,
+                            floorIndex = floorState.floorIndex
                         )
                     }
 

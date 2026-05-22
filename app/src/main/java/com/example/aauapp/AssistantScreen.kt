@@ -17,6 +17,7 @@ import com.example.aauapp.ui.theme.Blue600
 fun AssistantScreen(
     campusId: String = "campus-aau-cph",
     buildingId: String? = null,
+    floorIndex: Int? = null,
     viewModel: AssistantViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
     val messages by viewModel.messages.collectAsState()
@@ -87,7 +88,8 @@ fun AssistantScreen(
                             campusId = campusId,
                             buildingId = buildingId,
                             userLat = fix.latitude,
-                            userLon = fix.longitude
+                            userLon = fix.longitude,
+                            floorIndex = floorIndex
                         )
                         input = ""
                     }

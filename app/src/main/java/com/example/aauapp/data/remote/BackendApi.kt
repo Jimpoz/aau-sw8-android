@@ -173,7 +173,8 @@ data class AssistantChatRequest(
     val campus_id: String,
     val building_id: String? = null,
     val user_lat: Double? = null,
-    val user_lon: Double? = null
+    val user_lon: Double? = null,
+    val floor_index: Int? = null
 )
 
 data class AssistantChatResponse(

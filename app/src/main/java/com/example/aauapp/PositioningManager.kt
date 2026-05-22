@@ -44,7 +44,6 @@ class PositioningManager(
     private suspend fun rttFor(results: List<ScanResult>): Map<String, Float> =
         if (ranger.isAvailable()) ranger.range(ftmResponders(results)) else emptyMap()
 
-    /** Resolve the current space from a live scan. Null if no Wi-Fi visible. */
     suspend fun locate(floorId: String): WifiLocateResponse? {
         val results = scanResults()
         if (results.isEmpty()) return null
@@ -54,7 +53,6 @@ class PositioningManager(
         return runCatching { repo.locate(floorId, rssi, rtt) }.getOrNull()
     }
 
-    /** Capture one fingerprint sample for a space (owner/editor calibration). */
     suspend fun collectFingerprint(spaceId: String, floorId: String?): WifiFingerprintResponse? {
         val results = scanResults()
         val rssi = rssiMap(results)

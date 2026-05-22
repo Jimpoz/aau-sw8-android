@@ -38,7 +38,8 @@ class AssistantViewModel : ViewModel() {
         campusId: String = "campus-aau-cph",
         buildingId: String? = null,
         userLat: Double? = null,
-        userLon: Double? = null
+        userLon: Double? = null,
+        floorIndex: Int? = null
     ) {
         val cleanText = text.trim()
         if (cleanText.isEmpty()) return
@@ -55,7 +56,8 @@ class AssistantViewModel : ViewModel() {
                     campusId = campusId,
                     buildingId = buildingId,
                     userLat = userLat,
-                    userLon = userLon
+                    userLon = userLon,
+                    floorIndex = floorIndex
                 )
 
                 _messages.value = _messages.value + ChatMessage(
