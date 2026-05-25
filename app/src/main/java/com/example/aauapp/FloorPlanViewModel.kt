@@ -8,6 +8,7 @@ import com.example.aauapp.data.remote.FloorPlanRepository
 import com.example.aauapp.data.remote.NavigationResultDto
 import com.example.aauapp.data.remote.RouteStepDto
 import com.example.aauapp.data.remote.SpaceDisplayDto
+import com.example.aauapp.data.remote.VisibleBuildingDto
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,26 +19,20 @@ data class FloorPlanUiState(
     val floorId: String? = null,
     val floorName: String? = null,
     val floorIndex: Int? = null,
-
     val currentCampusId: String? = null,
     val currentBuildingId: String? = null,
-
     val availableFloors: List<FloorMapDto> = emptyList(),
-
     val spaces: List<SpaceDisplayDto> = emptyList(),
     val filteredSpaces: List<SpaceDisplayDto> = emptyList(),
-
     val selectedSpaceId: String? = null,
-
     val pendingFocusSpaceId: String? = null,
-
     val forcedUserSpaceId: String? = null,
     val forcedLocationSource: String? = null,
-
     val routeSteps: List<RouteStepDto> = emptyList(),
     val routePolyline: List<List<Double>> = emptyList(),
-
     val isNavigating: Boolean = false,
+    val visibleBuildings: List<VisibleBuildingDto> = emptyList(),
+    val manualFloorPinAt: Long? = null,
 
     val error: String? = null
 )
@@ -65,7 +60,23 @@ class FloorPlanViewModel : ViewModel() {
         }
     }
 
-    fun loadFloor(floorId: String) {
+    fun fetchVisibleBuildings() {
+        viewModelScope.launch {
+            try {
+                val list = repository.getVisibleBuildings()
+                _uiState.value = _uiState.value.copy(visibleBuildings = list)
+            } catch (_: Exception) {
+                // Offline / failed to load; we'll just have no buildings in the dropdown.
+            }
+        }
+    }
+
+    fun enterBuilding(buildingId: String) {
+        if (buildingId.isBlank() || buildingId == _uiState.value.currentBuildingId) return
+        loadDefaultFloorForBuilding(buildingId)
+    }
+
+    fun loadFloor(floorId: String, userInitiated: Boolean = false) {
         viewModelScope.launch {
 
             _uiState.value = _uiState.value.copy(
@@ -98,6 +109,8 @@ class FloorPlanViewModel : ViewModel() {
                     filteredSpaces = spaces,
 
                     selectedSpaceId = null,
+                    manualFloorPinAt = if (userInitiated) System.currentTimeMillis()
+                        else _uiState.value.manualFloorPinAt,
                     error = null
                 )
 
@@ -119,12 +132,15 @@ class FloorPlanViewModel : ViewModel() {
         }.getOrDefault(emptyList())
 
     fun forceUserSpace(spaceId: String, floorId: String?, source: String = "camera") {
+        val pinsManual = source == "camera"
         val needsFloorSwitch = !floorId.isNullOrBlank() && floorId != _uiState.value.floorId
         if (!needsFloorSwitch) {
             _uiState.value = _uiState.value.copy(
                 forcedUserSpaceId = spaceId,
                 forcedLocationSource = source,
                 selectedSpaceId = spaceId,
+                manualFloorPinAt = if (pinsManual) System.currentTimeMillis()
+                    else _uiState.value.manualFloorPinAt,
                 error = null
             )
             return
@@ -149,6 +165,8 @@ class FloorPlanViewModel : ViewModel() {
                     forcedUserSpaceId = spaceId,
                     forcedLocationSource = source,
                     selectedSpaceId = spaceId,
+                    manualFloorPinAt = if (pinsManual) System.currentTimeMillis()
+                        else _uiState.value.manualFloorPinAt,
                     error = null
                 )
             } catch (e: Exception) {

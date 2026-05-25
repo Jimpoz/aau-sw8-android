@@ -84,6 +84,20 @@ data class CampusMapCampusDto(
     val buildings: List<BuildingMapDto> = emptyList()
 )
 
+data class VisibleBuildingDto(
+    val id: String,
+    val name: String,
+    val short_name: String? = null,
+    val address: String? = null,
+    val origin_lat: Double,
+    val origin_lng: Double,
+    val campus_id: String? = null,
+    val campus_name: String? = null,
+    val organization_id: String? = null,
+    val organization_name: String? = null,
+    val is_public: Boolean = false
+)
+
 data class BuildingMapDto(
     val id: String,
     val name: String,
@@ -408,6 +422,9 @@ interface BackendApi {
     suspend fun exportCampus(
         @Path("campusId") campusId: String
     ): CampusMapLightDto
+
+    @GET("api/v1/buildings/visible")
+    suspend fun getVisibleBuildings(): List<VisibleBuildingDto>
 
     @GET("api/v1/buildings/{buildingId}/floors")
     suspend fun getBuildingFloors(

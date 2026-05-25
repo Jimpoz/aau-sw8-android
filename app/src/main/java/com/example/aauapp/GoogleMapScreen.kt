@@ -32,6 +32,9 @@ import com.example.aauapp.data.remote.RouteStepDto
 import com.example.aauapp.data.remote.SpaceDisplayDto
 import com.example.aauapp.ui.theme.Blue600
 import org.osmdroid.config.Configuration
+import org.osmdroid.events.MapListener
+import org.osmdroid.events.ScrollEvent
+import org.osmdroid.events.ZoomEvent
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
@@ -40,6 +43,7 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polygon
 import org.osmdroid.views.overlay.Polyline
+import org.osmdroid.views.overlay.gestures.RotationGestureOverlay
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import kotlinx.coroutines.delay
@@ -50,6 +54,15 @@ private val DEFAULT_CENTER = GeoPoint(55.6526, 12.5417)
 
 private const val OFF_ROUTE_METERS = 15.0
 private const val OFF_ROUTE_STREAK = 2
+
+private const val MANUAL_FLOOR_PIN_MS = 5L * 60 * 1000
+
+private const val INDOOR_ZOOM_THRESHOLD = 18.0
+private const val SNAP_RADIUS_METERS = 80.0
+
+private const val AVG_WALKING_SPEED_MS = 1.4
+private const val SIM_TICK_MS = 500L
+private const val SIM_FIX_FRESH_MS = 8_000L
 
 @Composable
 fun GoogleMapScreen(
@@ -92,10 +105,13 @@ fun GoogleMapScreen(
     }
     LaunchedEffect(barometerFloorIndex) {
         val idx = barometerFloorIndex ?: return@LaunchedEffect
-        if (idx != uiState.floorIndex) {
-            uiState.availableFloors.firstOrNull { it.floor_index == idx }?.let {
-                viewModel.loadFloor(it.id)
-            }
+        if (idx == uiState.floorIndex) return@LaunchedEffect
+        val pinnedAt = uiState.manualFloorPinAt
+        if (pinnedAt != null && System.currentTimeMillis() - pinnedAt < MANUAL_FLOOR_PIN_MS) {
+            return@LaunchedEffect
+        }
+        uiState.availableFloors.firstOrNull { it.floor_index == idx }?.let {
+            viewModel.loadFloor(it.id)
         }
     }
 
@@ -130,6 +146,60 @@ fun GoogleMapScreen(
                 }
             }
             delay(4000L)
+        }
+    }
+
+    var simulatedPosition by remember { mutableStateOf<GeoPoint?>(null) }
+    var lastForcedAt by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(uiState.forcedUserSpaceId) {
+        if (uiState.forcedUserSpaceId != null) lastForcedAt = System.currentTimeMillis()
+    }
+    LaunchedEffect(uiState.isNavigating, uiState.routePolyline) {
+        if (!uiState.isNavigating) {
+            simulatedPosition = null
+            return@LaunchedEffect
+        }
+        val route = uiState.routePolyline
+            .filter { it.size >= 2 }
+            .map { GeoPoint(it[0], it[1]) }
+        if (route.size < 2) {
+            simulatedPosition = null
+            return@LaunchedEffect
+        }
+
+        var simArcMeters = run {
+            val snapshot = viewModel.uiState.value
+            val forced = snapshot.spaces.firstOrNull { it.id == snapshot.forcedUserSpaceId }
+            val anchor = forced?.let {
+                val la = it.centroid_lat; val ln = it.centroid_lng
+                if (la != null && ln != null) GeoPoint(la, ln) else null
+            }
+            if (anchor != null) projectArcLengthMeters(route, anchor) else 0.0
+        }
+        var lastTick = System.currentTimeMillis()
+        simulatedPosition = null
+
+        while (isActive) {
+            delay(SIM_TICK_MS)
+            val now = System.currentTimeMillis()
+            val dtSec = (now - lastTick) / 1000.0
+            lastTick = now
+
+            val snapshot = viewModel.uiState.value
+            val forced = snapshot.spaces.firstOrNull { it.id == snapshot.forcedUserSpaceId }
+            val anchor = forced?.let {
+                val la = it.centroid_lat; val ln = it.centroid_lng
+                if (la != null && ln != null) GeoPoint(la, ln) else null
+            }
+            val fixIsFresh = (now - lastForcedAt) < SIM_FIX_FRESH_MS
+
+            if (fixIsFresh && anchor != null) {
+                simArcMeters = projectArcLengthMeters(route, anchor)
+                simulatedPosition = null
+            } else {
+                simArcMeters += dtSec * AVG_WALKING_SPEED_MS
+                simulatedPosition = coordAtArcLengthMeters(route, simArcMeters)
+            }
         }
     }
 
@@ -175,6 +245,7 @@ fun GoogleMapScreen(
         val gLat = fix.latitude
         val gLng = fix.longitude
         when {
+            simulatedPosition != null -> simulatedPosition
             fLat != null && fLng != null -> GeoPoint(fLat, fLng)
             gLat != null && gLng != null -> GeoPoint(gLat, gLng)
             else -> null
@@ -191,7 +262,11 @@ fun GoogleMapScreen(
 
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
     var locationOverlayRef by remember { mutableStateOf<MyLocationNewOverlay?>(null) }
+    var rotationOverlayRef by remember { mutableStateOf<RotationGestureOverlay?>(null) }
     var fittedFloorId by remember { mutableStateOf<String?>(null) }
+    var currentZoom by remember { mutableStateOf(16.0) }
+
+    LaunchedEffect(Unit) { viewModel.fetchVisibleBuildings() }
 
     fun flyTo(lat: Double?, lng: Double?) {
         if (lat == null || lng == null) return
@@ -229,13 +304,49 @@ fun GoogleMapScreen(
                     zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
                     setHorizontalMapRepetitionEnabled(false)
                     setVerticalMapRepetitionEnabled(false)
+                    isTilesScaledToDpi = true
+                    setFlingEnabled(true)
+                    minZoomLevel = 4.0
+                    maxZoomLevel = 22.0
                     controller.setZoom(16.0)
                     controller.setCenter(DEFAULT_CENTER)
+
+                    val rotation = RotationGestureOverlay(this).apply {
+                        isEnabled = true
+                    }
+                    overlays.add(rotation)
+                    rotationOverlayRef = rotation
 
                     val locOverlay = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this)
                     if (hasLocationPermission) locOverlay.enableMyLocation()
                     overlays.add(locOverlay)
                     locationOverlayRef = locOverlay
+
+                    addMapListener(object : MapListener {
+                        override fun onScroll(event: ScrollEvent?): Boolean {
+                            currentZoom = zoomLevelDouble
+                            maybeAutoSnapToBuilding(
+                                center = mapCenter as? GeoPoint ?: return false,
+                                zoom = zoomLevelDouble,
+                                buildings = uiState.visibleBuildings,
+                                currentBuildingId = uiState.currentBuildingId,
+                                onSnap = { id -> viewModel.enterBuilding(id) }
+                            )
+                            return false
+                        }
+
+                        override fun onZoom(event: ZoomEvent?): Boolean {
+                            currentZoom = event?.zoomLevel ?: zoomLevelDouble
+                            maybeAutoSnapToBuilding(
+                                center = mapCenter as? GeoPoint ?: return false,
+                                zoom = currentZoom,
+                                buildings = uiState.visibleBuildings,
+                                currentBuildingId = uiState.currentBuildingId,
+                                onSnap = { id -> viewModel.enterBuilding(id) }
+                            )
+                            return false
+                        }
+                    })
 
                     onResume()
                     mapViewRef = this
@@ -243,9 +354,23 @@ fun GoogleMapScreen(
             },
             update = { mapView ->
                 val locOverlay = locationOverlayRef
-                if (hasLocationPermission) locOverlay?.enableMyLocation()
 
-                mapView.overlays.removeAll { it !== locOverlay }
+                val forcedSpace = uiState.spaces.firstOrNull { it.id == uiState.forcedUserSpaceId }
+                val forcedLat = forcedSpace?.centroid_lat
+                val forcedLng = forcedSpace?.centroid_lng
+                val forcedPoint = if (forcedLat != null && forcedLng != null) {
+                    GeoPoint(forcedLat, forcedLng)
+                } else null
+                val liveDot: GeoPoint? = simulatedPosition ?: forcedPoint
+
+                if (hasLocationPermission && liveDot == null) {
+                    locOverlay?.enableMyLocation()
+                } else {
+                    locOverlay?.disableMyLocation()
+                }
+
+                val rotOverlay = rotationOverlayRef
+                mapView.overlays.removeAll { it !== locOverlay && it !== rotOverlay }
 
                 uiState.spaces.forEach { space ->
                     val pts = space.polygon_global.orEmpty()
@@ -314,16 +439,35 @@ fun GoogleMapScreen(
                     }
                 }
 
-                val forced = uiState.spaces.firstOrNull { it.id == uiState.forcedUserSpaceId }
-                val fLat = forced?.centroid_lat
-                val fLng = forced?.centroid_lng
-                if (forced != null && fLat != null && fLng != null) {
+                if (liveDot != null) {
                     val marker = Marker(mapView).apply {
-                        position = GeoPoint(fLat, fLng)
+                        position = liveDot
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                        title = forced.display_name ?: "You are here"
+                        title = if (simulatedPosition != null) {
+                            "You are here (estimated)"
+                        } else {
+                            forcedSpace?.display_name ?: "You are here"
+                        }
                     }
                     mapView.overlays.add(marker)
+                }
+
+                if (currentZoom < INDOOR_ZOOM_THRESHOLD) {
+                    uiState.visibleBuildings.forEach { b ->
+                        val marker = Marker(mapView).apply {
+                            position = GeoPoint(b.origin_lat, b.origin_lng)
+                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                            title = b.name
+                            snippet = b.address ?: b.campus_name
+                            setOnMarkerClickListener { _, _ ->
+                                viewModel.enterBuilding(b.id)
+                                mapView.controller.animateTo(GeoPoint(b.origin_lat, b.origin_lng))
+                                mapView.controller.setZoom(INDOOR_ZOOM_THRESHOLD + 0.5)
+                                true
+                            }
+                        }
+                        mapView.overlays.add(marker)
+                    }
                 }
 
                 if (uiState.floorId != null && uiState.floorId != fittedFloorId) {
@@ -388,7 +532,7 @@ fun GoogleMapScreen(
             floorName = uiState.floorName ?: floorName,
             floors = uiState.availableFloors,
             currentFloorId = uiState.floorId,
-            onSelectFloor = { fId -> viewModel.loadFloor(fId) },
+            onSelectFloor = { fId -> viewModel.loadFloor(fId, userInitiated = true) },
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(top = 118.dp, end = 16.dp),
@@ -523,6 +667,74 @@ private fun projectOntoSegment(p: GeoPoint, a: GeoPoint, b: GeoPoint): Pair<GeoP
     val projLng = a.longitude + t * (b.longitude - a.longitude)
     val ex = px - (ax + t * dx); val ey = py - (ay + t * dy)
     return GeoPoint(projLat, projLng) to Math.sqrt(ex * ex + ey * ey)
+}
+
+private fun projectArcLengthMeters(route: List<GeoPoint>, p: GeoPoint): Double {
+    if (route.size < 2) return 0.0
+    var bestDist = Double.MAX_VALUE
+    var bestArc = 0.0
+    var acc = 0.0
+    for (i in 0 until route.size - 1) {
+        val segLen = haversineMeters(route[i], route[i + 1])
+        val (proj, dist) = projectOntoSegment(p, route[i], route[i + 1])
+        if (dist < bestDist) {
+            bestDist = dist
+            bestArc = acc + haversineMeters(route[i], proj)
+        }
+        acc += segLen
+    }
+    return bestArc
+}
+
+private fun coordAtArcLengthMeters(route: List<GeoPoint>, target: Double): GeoPoint? {
+    if (route.isEmpty()) return null
+    if (target <= 0) return route.first()
+    var acc = 0.0
+    for (i in 0 until route.size - 1) {
+        val segLen = haversineMeters(route[i], route[i + 1])
+        if (acc + segLen >= target) {
+            val t = ((target - acc) / segLen.coerceAtLeast(1e-4)).coerceIn(0.0, 1.0)
+            val lat = route[i].latitude + t * (route[i + 1].latitude - route[i].latitude)
+            val lng = route[i].longitude + t * (route[i + 1].longitude - route[i].longitude)
+            return GeoPoint(lat, lng)
+        }
+        acc += segLen
+    }
+    return route.last()
+}
+
+private fun haversineMeters(a: GeoPoint, b: GeoPoint): Double {
+    val la1 = Math.toRadians(a.latitude)
+    val la2 = Math.toRadians(b.latitude)
+    val dlat = Math.toRadians(b.latitude - a.latitude)
+    val dlng = Math.toRadians(b.longitude - a.longitude)
+    val h = Math.sin(dlat / 2) * Math.sin(dlat / 2) +
+            Math.cos(la1) * Math.cos(la2) *
+            Math.sin(dlng / 2) * Math.sin(dlng / 2)
+    return 2 * 6_371_000.0 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
+}
+
+private fun maybeAutoSnapToBuilding(
+    center: GeoPoint,
+    zoom: Double,
+    buildings: List<com.example.aauapp.data.remote.VisibleBuildingDto>,
+    currentBuildingId: String?,
+    onSnap: (String) -> Unit
+) {
+    if (zoom < INDOOR_ZOOM_THRESHOLD || buildings.isEmpty()) return
+    val nearest = buildings
+        .map { b ->
+            val (_, d) = projectOntoSegment(
+                center,
+                GeoPoint(b.origin_lat, b.origin_lng),
+                GeoPoint(b.origin_lat, b.origin_lng)
+            )
+            b to d
+        }
+        .minByOrNull { it.second } ?: return
+    if (nearest.second <= SNAP_RADIUS_METERS && nearest.first.id != currentBuildingId) {
+        onSnap(nearest.first.id)
+    }
 }
 
 private fun floorBoundingBox(spaces: List<SpaceDisplayDto>): BoundingBox? {

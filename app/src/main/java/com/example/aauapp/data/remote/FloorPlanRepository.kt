@@ -13,6 +13,10 @@ class FloorPlanRepository(
         return api.getFloorDisplay(floorId)
     }
 
+    suspend fun getVisibleBuildings(): List<VisibleBuildingDto> {
+        return api.getVisibleBuildings()
+    }
+
     suspend fun navigate(
         fromSpaceId: String,
         toSpaceId: String,
