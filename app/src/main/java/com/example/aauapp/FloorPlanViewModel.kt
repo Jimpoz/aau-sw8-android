@@ -366,16 +366,17 @@ class FloorPlanViewModel : ViewModel() {
     }
 
     fun computeRouteToSelected() {
+        val state = _uiState.value
+        val spaces = state.spaces
+        val destination = state.selectedSpaceId ?: return
 
-        val spaces = _uiState.value.spaces
-
-        val destination =
-            _uiState.value.selectedSpaceId ?: return
-
-        val start = spaces.firstOrNull {
-            it.id != destination &&
-                    it.is_navigable != false
-        }?.id ?: return
+        val forcedId = state.forcedUserSpaceId
+        val start = when {
+            !forcedId.isNullOrBlank() && forcedId != destination -> forcedId
+            else -> spaces.firstOrNull {
+                it.id != destination && it.is_navigable != false
+            }?.id ?: return
+        }
 
         viewModelScope.launch {
 

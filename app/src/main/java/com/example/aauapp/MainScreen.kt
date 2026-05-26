@@ -199,8 +199,15 @@ fun MainScreen(
                             facilityId = floorState.currentCampusId
                                 ?: profile.campusId ?: "aau",
                             canRegisterLandmark = role == "owner" || role == "editor",
-                            buildingId = floorState.currentBuildingId
-                                ?: profile.buildingId,
+                            buildingId = run {
+                                val cur = floorState.currentBuildingId
+                                val orgId = profile.organizationId
+                                if (cur != null && orgId != null) {
+                                    val curOrgId = floorState.visibleBuildings
+                                        .firstOrNull { it.id == cur }?.organization_id
+                                    if (curOrgId == orgId) cur else profile.buildingId
+                                } else cur ?: profile.buildingId
+                            },
                             preferredFloorId = floorState.floorId
                                 ?: profile.defaultFloorId,
                             onScanRoom = {

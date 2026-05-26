@@ -63,6 +63,7 @@ private const val SNAP_RADIUS_METERS = 80.0
 private const val AVG_WALKING_SPEED_MS = 1.4
 private const val SIM_TICK_MS = 500L
 private const val SIM_FIX_FRESH_MS = 8_000L
+private const val ARRIVAL_RADIUS_METERS = 6.0
 
 @Composable
 fun GoogleMapScreen(
@@ -83,6 +84,9 @@ fun GoogleMapScreen(
         locationService.startUpdates()
         onDispose { locationService.stopUpdates() }
     }
+
+    val tts = remember { TextToSpeechManager(context) }
+    DisposableEffect(Unit) { onDispose { tts.shutdown() } }
 
     val positioningManager = remember { PositioningManager(context) }
 
@@ -186,6 +190,7 @@ fun GoogleMapScreen(
             lastTick = now
 
             val snapshot = viewModel.uiState.value
+
             val forced = snapshot.spaces.firstOrNull { it.id == snapshot.forcedUserSpaceId }
             val anchor = forced?.let {
                 val la = it.centroid_lat; val ln = it.centroid_lng
@@ -196,9 +201,17 @@ fun GoogleMapScreen(
             if (fixIsFresh && anchor != null) {
                 simArcMeters = projectArcLengthMeters(route, anchor)
                 simulatedPosition = null
-            } else {
-                simArcMeters += dtSec * AVG_WALKING_SPEED_MS
-                simulatedPosition = coordAtArcLengthMeters(route, simArcMeters)
+                continue
+            }
+
+            simArcMeters += dtSec * AVG_WALKING_SPEED_MS
+            val simPos = coordAtArcLengthMeters(route, simArcMeters)
+            simulatedPosition = simPos
+
+            if (simPos != null && haversineMeters(simPos, route.last()) <= ARRIVAL_RADIUS_METERS) {
+                tts.speak("You have reached your destination.")
+                viewModel.stopNavigation()
+                break
             }
         }
     }
