@@ -10,16 +10,21 @@ class LandmarkRepository(
     suspend fun register(
         name: String,
         spaceId: String,
-        jpeg: ByteArray
+        jpeg: ByteArray,
+        latitude: Double? = null,
+        longitude: Double? = null
     ): RegisteredLandmarkDto {
-        val namePart = name.toRequestBody("text/plain".toMediaTypeOrNull())
-        val spacePart = spaceId.toRequestBody("text/plain".toMediaTypeOrNull())
+        val text = "text/plain".toMediaTypeOrNull()
+        val namePart = name.toRequestBody(text)
+        val spacePart = spaceId.toRequestBody(text)
         val imagePart = MultipartBody.Part.createFormData(
             "image",
             "landmark.jpg",
             jpeg.toRequestBody("image/jpeg".toMediaTypeOrNull())
         )
-        return api.registerLandmark(namePart, spacePart, imagePart)
+        val latPart = latitude?.toString()?.toRequestBody(text)
+        val lngPart = longitude?.toString()?.toRequestBody(text)
+        return api.registerLandmark(namePart, spacePart, imagePart, latPart, lngPart)
     }
 
     suspend fun list(

@@ -591,12 +591,19 @@ private fun LiveCameraScanner(
 
     val jpegToRegister = capturedJpeg
     if (jpegToRegister != null) {
+        val context = LocalContext.current
+        val locationService = remember {
+            (context.applicationContext as AAUAppApplication).appContainer.locationService
+        }
+        val fix by locationService.fix.collectAsState()
         LandmarkRegistrationSheet(
             jpeg = jpegToRegister,
             buildingId = buildingId,
             preferredFloorId = preferredFloorId,
             onDismiss = { capturedJpeg = null },
-            onRegistered = { lastSnappedSpaceId = null }
+            onRegistered = { lastSnappedSpaceId = null },
+            userLatitude = fix.latitude,
+            userLongitude = fix.longitude
         )
     }
 }

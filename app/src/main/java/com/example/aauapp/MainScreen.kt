@@ -215,7 +215,9 @@ fun MainScreen(
                                 if (spaceId.isNotBlank()) {
                                     floorPlanViewModel.forceUserSpace(
                                         spaceId = spaceId,
-                                        floorId = location.floor_id
+                                        floorId = location.floor_id,
+                                        latitude = location.centroid_lat,
+                                        longitude = location.centroid_lng,
                                     )
                                     selectedTab = 0
                                 }

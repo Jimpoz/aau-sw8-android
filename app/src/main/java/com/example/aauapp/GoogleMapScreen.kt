@@ -264,7 +264,9 @@ fun GoogleMapScreen(
     var locationOverlayRef by remember { mutableStateOf<MyLocationNewOverlay?>(null) }
     var rotationOverlayRef by remember { mutableStateOf<RotationGestureOverlay?>(null) }
     var fittedFloorId by remember { mutableStateOf<String?>(null) }
-    var currentZoom by remember { mutableStateOf(16.0) }
+    var zoomBelowThreshold by remember { mutableStateOf(true) }
+    val floorPolygons = remember { mutableMapOf<String, Polygon>() }
+    var lastSpacesKey by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) { viewModel.fetchVisibleBuildings() }
 
@@ -304,7 +306,6 @@ fun GoogleMapScreen(
                     zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
                     setHorizontalMapRepetitionEnabled(false)
                     setVerticalMapRepetitionEnabled(false)
-                    isTilesScaledToDpi = true
                     setFlingEnabled(true)
                     minZoomLevel = 4.0
                     maxZoomLevel = 22.0
@@ -323,28 +324,39 @@ fun GoogleMapScreen(
                     locationOverlayRef = locOverlay
 
                     addMapListener(object : MapListener {
+                        private var lastSnapProbeMs = 0L
+
                         override fun onScroll(event: ScrollEvent?): Boolean {
-                            currentZoom = zoomLevelDouble
+                            updateZoomFlag()
+                            maybeProbeBuildingSnap()
+                            return false
+                        }
+
+                        override fun onZoom(event: ZoomEvent?): Boolean {
+                            updateZoomFlag()
+                            maybeProbeBuildingSnap()
+                            return false
+                        }
+
+                        private fun updateZoomFlag() {
+                            val below = zoomLevelDouble < INDOOR_ZOOM_THRESHOLD
+                            if (below != zoomBelowThreshold) {
+                                zoomBelowThreshold = below
+                            }
+                        }
+
+                        private fun maybeProbeBuildingSnap() {
+                            val now = System.currentTimeMillis()
+                            if (now - lastSnapProbeMs < 250) return
+                            lastSnapProbeMs = now
+                            val center = mapCenter as? GeoPoint ?: return
                             maybeAutoSnapToBuilding(
-                                center = mapCenter as? GeoPoint ?: return false,
+                                center = center,
                                 zoom = zoomLevelDouble,
                                 buildings = uiState.visibleBuildings,
                                 currentBuildingId = uiState.currentBuildingId,
                                 onSnap = { id -> viewModel.enterBuilding(id) }
                             )
-                            return false
-                        }
-
-                        override fun onZoom(event: ZoomEvent?): Boolean {
-                            currentZoom = event?.zoomLevel ?: zoomLevelDouble
-                            maybeAutoSnapToBuilding(
-                                center = mapCenter as? GeoPoint ?: return false,
-                                zoom = currentZoom,
-                                buildings = uiState.visibleBuildings,
-                                currentBuildingId = uiState.currentBuildingId,
-                                onSnap = { id -> viewModel.enterBuilding(id) }
-                            )
-                            return false
                         }
                     })
 
@@ -356,11 +368,15 @@ fun GoogleMapScreen(
                 val locOverlay = locationOverlayRef
 
                 val forcedSpace = uiState.spaces.firstOrNull { it.id == uiState.forcedUserSpaceId }
-                val forcedLat = forcedSpace?.centroid_lat
-                val forcedLng = forcedSpace?.centroid_lng
-                val forcedPoint = if (forcedLat != null && forcedLng != null) {
-                    GeoPoint(forcedLat, forcedLng)
-                } else null
+                val exactLat = uiState.forcedUserLatitude
+                val exactLng = uiState.forcedUserLongitude
+                val forcedPoint = when {
+                    exactLat != null && exactLng != null ->
+                        GeoPoint(exactLat, exactLng)
+                    forcedSpace?.centroid_lat != null && forcedSpace.centroid_lng != null ->
+                        GeoPoint(forcedSpace.centroid_lat, forcedSpace.centroid_lng)
+                    else -> null
+                }
                 val liveDot: GeoPoint? = simulatedPosition ?: forcedPoint
 
                 if (hasLocationPermission && liveDot == null) {
@@ -370,40 +386,66 @@ fun GoogleMapScreen(
                 }
 
                 val rotOverlay = rotationOverlayRef
-                mapView.overlays.removeAll { it !== locOverlay && it !== rotOverlay }
 
-                uiState.spaces.forEach { space ->
-                    val pts = space.polygon_global.orEmpty()
-                        .filter { it.size >= 2 }
-                        .map { GeoPoint(it[0], it[1]) }
-                    if (pts.size >= 3) {
-                        val selected = space.id == uiState.selectedSpaceId
-                        val poly = Polygon(mapView).apply {
-                            points = pts
-                            fillPaint.color =
-                                (if (selected) Color(0xEE009DFF) else floorFillColor(space)).toArgb()
-                            outlinePaint.color = Color(0xFF1F2937).toArgb()
-                            outlinePaint.strokeWidth = if (selected) 6f else 3f
-                            title = space.display_name ?: space.short_name ?: space.id
-                            setOnClickListener { _, _, _ ->
-                                viewModel.selectSpace(space.id)
-                                true
+                val spacesKey = uiState.spaces.joinToString("|") { it.id }
+                if (spacesKey != lastSpacesKey) {
+                    floorPolygons.values.forEach { mapView.overlays.remove(it) }
+                    floorPolygons.clear()
+                    uiState.spaces.forEach { space ->
+                        val pts = space.polygon_global.orEmpty()
+                            .filter { it.size >= 2 }
+                            .map { GeoPoint(it[0], it[1]) }
+                        if (pts.size >= 3) {
+                            val poly = Polygon(mapView).apply {
+                                points = pts
+                                fillPaint.color = floorFillColor(space).toArgb()
+                                outlinePaint.color = Color(0xFF1F2937).toArgb()
+                                outlinePaint.strokeWidth = 3f
+                                title = space.display_name ?: space.short_name ?: space.id
+                                setOnClickListener { _, _, _ ->
+                                    viewModel.selectSpace(space.id)
+                                    true
+                                }
                             }
+                            mapView.overlays.add(poly)
+                            floorPolygons[space.id] = poly
                         }
-                        mapView.overlays.add(poly)
                     }
+                    lastSpacesKey = spacesKey
+                }
+
+                // Cheap: just retint the selected polygon.
+                floorPolygons.forEach { (id, poly) ->
+                    val space = uiState.spaces.firstOrNull { it.id == id } ?: return@forEach
+                    val selected = id == uiState.selectedSpaceId
+                    poly.fillPaint.color =
+                        (if (selected) Color(0xEE009DFF) else floorFillColor(space)).toArgb()
+                    poly.outlinePaint.strokeWidth = if (selected) 6f else 3f
+                }
+
+                val preserved = floorPolygons.values.toSet()
+                mapView.overlays.removeAll {
+                    it !== locOverlay && it !== rotOverlay && it !in preserved
                 }
 
                 val routePts = uiState.routePolyline
                     .filter { it.size >= 2 }
                     .map { GeoPoint(it[0], it[1]) }
                 if (routePts.size >= 2) {
-                    val (walked, remaining) =
+                    val (walked, remainingRaw) =
                         if (uiState.isNavigating && navAnchor != null) {
                             splitRoute(routePts, navAnchor)
                         } else {
                             emptyList<GeoPoint>() to routePts
                         }
+
+                    val origin: GeoPoint? = liveDot ?: run {
+                        val gLat = fix.latitude
+                        val gLng = fix.longitude
+                        if (gLat != null && gLng != null) GeoPoint(gLat, gLng) else null
+                    }
+                    val remaining: List<GeoPoint> =
+                        if (origin != null) listOf(origin) + remainingRaw else remainingRaw
 
                     if (walked.size >= 2) {
                         val trail = Polyline(mapView).apply {
@@ -452,7 +494,7 @@ fun GoogleMapScreen(
                     mapView.overlays.add(marker)
                 }
 
-                if (currentZoom < INDOOR_ZOOM_THRESHOLD) {
+                if (zoomBelowThreshold) {
                     uiState.visibleBuildings.forEach { b ->
                         val marker = Marker(mapView).apply {
                             position = GeoPoint(b.origin_lat, b.origin_lng)

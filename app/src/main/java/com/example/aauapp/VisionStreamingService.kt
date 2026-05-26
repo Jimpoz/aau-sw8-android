@@ -39,7 +39,11 @@ data class RemoteLocation(
     val building_name: String? = null,
     val campus_id: String? = null,
     val floor_id: String? = null,
-    val floor_index: Int? = null
+    val floor_index: Int? = null,
+    val centroid_x: Double? = null,
+    val centroid_y: Double? = null,
+    val centroid_lat: Double? = null,
+    val centroid_lng: Double? = null
 )
 
 data class VisionStreamFrame(

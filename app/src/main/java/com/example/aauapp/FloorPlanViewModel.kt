@@ -28,6 +28,8 @@ data class FloorPlanUiState(
     val pendingFocusSpaceId: String? = null,
     val forcedUserSpaceId: String? = null,
     val forcedLocationSource: String? = null,
+    val forcedUserLatitude: Double? = null,
+    val forcedUserLongitude: Double? = null,
     val routeSteps: List<RouteStepDto> = emptyList(),
     val routePolyline: List<List<Double>> = emptyList(),
     val isNavigating: Boolean = false,
@@ -131,13 +133,21 @@ class FloorPlanViewModel : ViewModel() {
                 .sortedByDescending { it.floor_index ?: 0 }
         }.getOrDefault(emptyList())
 
-    fun forceUserSpace(spaceId: String, floorId: String?, source: String = "camera") {
+    fun forceUserSpace(
+        spaceId: String,
+        floorId: String?,
+        source: String = "camera",
+        latitude: Double? = null,
+        longitude: Double? = null,
+    ) {
         val pinsManual = source == "camera"
         val needsFloorSwitch = !floorId.isNullOrBlank() && floorId != _uiState.value.floorId
         if (!needsFloorSwitch) {
             _uiState.value = _uiState.value.copy(
                 forcedUserSpaceId = spaceId,
                 forcedLocationSource = source,
+                forcedUserLatitude = latitude,
+                forcedUserLongitude = longitude,
                 selectedSpaceId = spaceId,
                 manualFloorPinAt = if (pinsManual) System.currentTimeMillis()
                     else _uiState.value.manualFloorPinAt,
@@ -164,6 +174,8 @@ class FloorPlanViewModel : ViewModel() {
                     filteredSpaces = spaces,
                     forcedUserSpaceId = spaceId,
                     forcedLocationSource = source,
+                    forcedUserLatitude = latitude,
+                    forcedUserLongitude = longitude,
                     selectedSpaceId = spaceId,
                     manualFloorPinAt = if (pinsManual) System.currentTimeMillis()
                         else _uiState.value.manualFloorPinAt,
@@ -255,14 +267,18 @@ class FloorPlanViewModel : ViewModel() {
     fun updateLiveLocation(spaceId: String) {
         _uiState.value = _uiState.value.copy(
             forcedUserSpaceId = spaceId,
-            forcedLocationSource = "wifi"
+            forcedLocationSource = "wifi",
+            forcedUserLatitude = null,
+            forcedUserLongitude = null,
         )
     }
 
     fun clearForcedLocation() {
         _uiState.value = _uiState.value.copy(
             forcedUserSpaceId = null,
-            forcedLocationSource = null
+            forcedLocationSource = null,
+            forcedUserLatitude = null,
+            forcedUserLongitude = null,
         )
     }
 

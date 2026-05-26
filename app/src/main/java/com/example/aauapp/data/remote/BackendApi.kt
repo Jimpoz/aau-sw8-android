@@ -233,6 +233,10 @@ data class RegisteredLandmarkDto(
     val campus_id: String? = null,
     val image_width: Int? = null,
     val image_height: Int? = null,
+    val centroid_x: Double? = null,
+    val centroid_y: Double? = null,
+    val centroid_lat: Double? = null,
+    val centroid_lng: Double? = null,
     val created_by: String? = null,
     val created_at: String? = null
 )
@@ -471,7 +475,9 @@ interface BackendApi {
     suspend fun registerLandmark(
         @Part("name") name: RequestBody,
         @Part("space_id") spaceId: RequestBody,
-        @Part image: MultipartBody.Part
+        @Part image: MultipartBody.Part,
+        @Part("centroid_lat") centroidLat: RequestBody? = null,
+        @Part("centroid_lng") centroidLng: RequestBody? = null
     ): RegisteredLandmarkDto
 
     @GET("api/v1/landmarks")

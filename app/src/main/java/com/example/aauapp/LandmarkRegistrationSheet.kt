@@ -133,7 +133,12 @@ class LandmarkRegistrationViewModel : ViewModel() {
         }
     }
 
-    fun submit(name: String, jpeg: ByteArray) {
+    fun submit(
+        name: String,
+        jpeg: ByteArray,
+        latitude: Double? = null,
+        longitude: Double? = null,
+    ) {
         val spaceId = _uiState.value.selectedSpaceId ?: return
         val trimmed = name.trim()
         if (trimmed.isEmpty()) {
@@ -143,7 +148,7 @@ class LandmarkRegistrationViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSubmitting = true, error = null, info = null)
             try {
-                landmarkRepo.register(trimmed, spaceId, jpeg)
+                landmarkRepo.register(trimmed, spaceId, jpeg, latitude, longitude)
                 _uiState.value = _uiState.value.copy(
                     isSubmitting = false,
                     info = "Registered — ml-vision will pick this up on the next stream connection."
@@ -166,6 +171,8 @@ fun LandmarkRegistrationSheet(
     preferredFloorId: String?,
     onDismiss: () -> Unit,
     onRegistered: () -> Unit = {},
+    userLatitude: Double? = null,
+    userLongitude: Double? = null,
     viewModel: LandmarkRegistrationViewModel = viewModel()
 ) {
     val ui by viewModel.uiState.collectAsState()
@@ -258,7 +265,9 @@ fun LandmarkRegistrationSheet(
 
             val canSubmit = !ui.isSubmitting && name.isNotBlank() && ui.selectedSpaceId != null
             Button(
-                onClick = { viewModel.submit(name, jpeg) },
+                onClick = {
+                    viewModel.submit(name, jpeg, userLatitude, userLongitude)
+                },
                 enabled = canSubmit,
                 modifier = Modifier.fillMaxWidth()
             ) {
