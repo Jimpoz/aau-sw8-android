@@ -650,6 +650,8 @@ fun GoogleMapScreen(
             canCalibrate = canCalibrate,
             onLocated = { spaceId, fId ->
                 viewModel.forceUserSpace(spaceId, fId, source = "wifi")
+                val locatedSpace = uiState.spaces.firstOrNull { it.id == spaceId }
+                flyTo(locatedSpace?.centroid_lat, locatedSpace?.centroid_lng)
             },
             modifier = Modifier
                 .align(Alignment.BottomStart)

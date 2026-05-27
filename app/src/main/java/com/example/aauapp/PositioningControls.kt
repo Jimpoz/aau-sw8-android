@@ -201,7 +201,9 @@ private fun WifiCalibrationSheet(
                 mergedCounts.putAll(it)
             }
         }
-        rooms = collected
+        rooms = collected.sortedBy { r ->
+            (r.space.display_name ?: r.space.short_name ?: r.space.id).lowercase()
+        }
         counts = mergedCounts
         selectedSpaceId = collected.firstOrNull()?.space?.id
         loadingRooms = false
