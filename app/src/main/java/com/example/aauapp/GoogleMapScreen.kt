@@ -289,10 +289,18 @@ fun GoogleMapScreen(
         mapViewRef?.controller?.setZoom(20.0)
     }
 
-    LaunchedEffect(uiState.routePolyline) {
-        val pts = uiState.routePolyline
-            .filter { it.size >= 2 }
-            .map { GeoPoint(it[0], it[1]) }
+    LaunchedEffect(uiState.routePolyline, uiState.routePolylinesByFloor, uiState.floorIndex) {
+        val floorIndex = uiState.floorIndex
+        val pts: List<GeoPoint> = when {
+            floorIndex != null && uiState.routePolylinesByFloor.containsKey(floorIndex) ->
+                uiState.routePolylinesByFloor[floorIndex]!!
+                    .filter { it.size >= 2 }
+                    .map { GeoPoint(it[0], it[1]) }
+            else ->
+                uiState.routePolyline
+                    .filter { it.size >= 2 }
+                    .map { GeoPoint(it[0], it[1]) }
+        }
         if (pts.size >= 2) {
             val bbox = BoundingBox.fromGeoPoints(pts)
             mapViewRef?.post { mapViewRef?.zoomToBoundingBox(bbox, true, 160) }
@@ -441,9 +449,18 @@ fun GoogleMapScreen(
                     it !== locOverlay && it !== rotOverlay && it !in preserved
                 }
 
-                val routePts = uiState.routePolyline
-                    .filter { it.size >= 2 }
-                    .map { GeoPoint(it[0], it[1]) }
+                val currentFloorIndex = uiState.floorIndex
+                val routePts: List<GeoPoint> = when {
+                    currentFloorIndex != null &&
+                        uiState.routePolylinesByFloor.containsKey(currentFloorIndex) ->
+                        uiState.routePolylinesByFloor[currentFloorIndex]!!
+                            .filter { it.size >= 2 }
+                            .map { GeoPoint(it[0], it[1]) }
+                    else ->
+                        uiState.routePolyline
+                            .filter { it.size >= 2 }
+                            .map { GeoPoint(it[0], it[1]) }
+                }
                 if (routePts.size >= 2) {
                     val (walked, remainingRaw) =
                         if (uiState.isNavigating && navAnchor != null) {

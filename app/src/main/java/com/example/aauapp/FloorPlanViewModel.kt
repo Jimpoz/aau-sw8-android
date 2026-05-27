@@ -32,6 +32,7 @@ data class FloorPlanUiState(
     val forcedUserLongitude: Double? = null,
     val routeSteps: List<RouteStepDto> = emptyList(),
     val routePolyline: List<List<Double>> = emptyList(),
+    val routePolylinesByFloor: Map<Int, List<List<Double>>> = emptyMap(),
     val isNavigating: Boolean = false,
     val visibleBuildings: List<VisibleBuildingDto> = emptyList(),
     val manualFloorPinAt: Long? = null,
@@ -256,7 +257,10 @@ class FloorPlanViewModel : ViewModel() {
                 )
                 _uiState.value = _uiState.value.copy(
                     routeSteps = result.steps,
-                    routePolyline = result.polyline
+                    routePolyline = result.polyline,
+                    routePolylinesByFloor = result.polylines_by_floor
+                        .mapKeys { (k, _) -> k.toIntOrNull() ?: -999 }
+                        .filterKeys { it != -999 }
                 )
             } catch (_: Exception) {
                 // Keep the existing route; we'll retry on the next off-route tick.
@@ -287,6 +291,7 @@ class FloorPlanViewModel : ViewModel() {
             selectedSpaceId = null,
             routeSteps = emptyList(),
             routePolyline = emptyList(),
+            routePolylinesByFloor = emptyMap(),
             isNavigating = false
         )
     }
@@ -400,6 +405,9 @@ class FloorPlanViewModel : ViewModel() {
                     isLoading = false,
                     routeSteps = result.steps,
                     routePolyline = result.polyline,
+                    routePolylinesByFloor = result.polylines_by_floor
+                        .mapKeys { (k, _) -> k.toIntOrNull() ?: -999 }
+                        .filterKeys { it != -999 },
                     error = null
                 )
 
@@ -419,6 +427,7 @@ class FloorPlanViewModel : ViewModel() {
         _uiState.value = _uiState.value.copy(
             routeSteps = emptyList(),
             routePolyline = emptyList(),
+            routePolylinesByFloor = emptyMap(),
             isNavigating = false
         )
     }
