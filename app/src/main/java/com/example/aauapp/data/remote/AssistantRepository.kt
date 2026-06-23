@@ -9,7 +9,8 @@ class AssistantRepository(
         buildingId: String? = null,
         userLat: Double? = null,
         userLon: Double? = null,
-        floorIndex: Int? = null
+        floorIndex: Int? = null,
+        currentLocationSpaceId: String? = null
     ): String {
         return api.chatWithAssistant(
             AssistantChatRequest(
@@ -18,7 +19,8 @@ class AssistantRepository(
                 building_id = buildingId,
                 user_lat = userLat,
                 user_lon = userLon,
-                floor_index = floorIndex
+                floor_index = floorIndex,
+                current_location_space_id = currentLocationSpaceId
             )
         ).answer
     }

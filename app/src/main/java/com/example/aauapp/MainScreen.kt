@@ -189,7 +189,10 @@ fun MainScreen(
                                 ?: profile.campusId ?: "campus-aau-cph",
                             buildingId = floorState.currentBuildingId
                                 ?: profile.buildingId,
-                            floorIndex = floorState.floorIndex
+                            floorIndex = floorState.floorIndex,
+                            forcedSpaceId = floorState.forcedUserSpaceId,
+                            forcedLat = floorState.forcedUserLatitude,
+                            forcedLon = floorState.forcedUserLongitude
                         )
                     }
 

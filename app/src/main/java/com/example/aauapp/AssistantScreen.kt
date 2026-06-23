@@ -18,6 +18,9 @@ fun AssistantScreen(
     campusId: String = "campus-aau-cph",
     buildingId: String? = null,
     floorIndex: Int? = null,
+    forcedSpaceId: String? = null,
+    forcedLat: Double? = null,
+    forcedLon: Double? = null,
     viewModel: AssistantViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
     val messages by viewModel.messages.collectAsState()
@@ -83,13 +86,16 @@ fun AssistantScreen(
             Button(
                 onClick = {
                     if (input.isNotBlank()) {
+                        // Prefer the forced/landmark snap (the red dot) over raw GPS —
+                        // GPS drifts indoors, so "where am I" should report the snap.
                         viewModel.sendMessage(
                             text = input,
                             campusId = campusId,
                             buildingId = buildingId,
-                            userLat = fix.latitude,
-                            userLon = fix.longitude,
-                            floorIndex = floorIndex
+                            userLat = forcedLat ?: fix.latitude,
+                            userLon = forcedLon ?: fix.longitude,
+                            floorIndex = floorIndex,
+                            currentLocationSpaceId = forcedSpaceId
                         )
                         input = ""
                     }

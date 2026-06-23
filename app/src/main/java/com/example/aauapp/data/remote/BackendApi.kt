@@ -189,7 +189,10 @@ data class AssistantChatRequest(
     val building_id: String? = null,
     val user_lat: Double? = null,
     val user_lon: Double? = null,
-    val floor_index: Int? = null
+    val floor_index: Int? = null,
+    // Forced/landmark snap (the red dot). When set it overrides GPS so
+    // "where am I" reports the room the dot is in.
+    val current_location_space_id: String? = null
 )
 
 data class AssistantChatResponse(
